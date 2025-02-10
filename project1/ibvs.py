@@ -1,6 +1,7 @@
 import numpy as np
 from ApriltagDetector import get_pose_apriltag_in_camera_frame
 
+# @param detection is one element from list returned by ApriltagDetector.find_tags()
 def get_ibvs_speeds(detection):
 
     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
@@ -18,5 +19,5 @@ def get_ibvs_speeds(detection):
 
     res = np.matmul(lam, np.matmul(Lx.I, deltas))
 
-    print(f'{res.item(1)} \t {res.item(0)}')
+    #print(f'{res.item(1)} \t {res.item(0)}')
     return res
