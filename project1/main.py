@@ -8,6 +8,26 @@ from robomaster import camera
 from ApriltagDetector import *
 from ibvs import get_ibvs_speeds
 
+april_to_coords = {
+    30: (3.0, 2.5),
+    31: (4.0, 2.5),
+    32: (3.0, 4.5),
+    33: (4.0, 4,5),
+    34: (3.5, 6.0),
+    35: (5.5, 2.0),
+    36: (7.5, 2.0),
+    37: (6.5, 5.0),
+    38: (6.0, 6.5),
+    39: (7.0, 6.5),
+    40: (6.0, 8.5),
+    41: (7.0, 8.5),
+    42: (9.0, 2.5),
+    43: (10.0, 2.5),
+    44: (9.0, 4.5),
+    45: (10, 4.5),
+    46: (9.5, 6.0)
+}
+
 def draw_detections(frame, detections):
     for detection in detections:
         pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
