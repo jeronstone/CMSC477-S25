@@ -1,3 +1,5 @@
 pupil-apriltags
 opencv-python
 robomaster
+pillow
+numpy
