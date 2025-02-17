@@ -5,6 +5,9 @@ from PIL import Image
 import os
 from collections import deque
 import math
+import numpy as np
+from scipy.interpolate import CubicSpline
+import matplotlib.pyplot as plt
 
 CROSS_CORNERS = False # whether or not the path can cross an obstacle corner while traversing, since robots would collide with the corner in the real world
 ITERATIONS_PER_FRAME = 32 # how many iterations occur before we generate a new frame of the GIF 
@@ -47,10 +50,10 @@ def Dijkstra(map, gen_frames, frames, scale=1):
         if not(new_y >= 0 and map.map[new_y][new_x].square_type is not MapSquareEnum.OBSTACLE):
             include_neighbors[0][1] = 0
         # if we can't cross corners and this is an obstacle, exclude all neighbors next to this one
-        if CROSS_CORNERS is False and map.map[new_y][new_x].square_type is MapSquareEnum.OBSTACLE:
-            include_neighbors[0][0] = 0
-            include_neighbors[0][1] = 0
-            include_neighbors[0][2] = 0
+            if CROSS_CORNERS is False:
+                include_neighbors[0][0] = 0
+                include_neighbors[0][1] = 0
+                include_neighbors[0][2] = 0
         # top right
         new_x = curr_node[0] + 1
         new_y = curr_node[1] - 1
@@ -64,10 +67,10 @@ def Dijkstra(map, gen_frames, frames, scale=1):
         if not(new_x >= 0 and map.map[new_y][new_x].square_type is not MapSquareEnum.OBSTACLE):
             include_neighbors[1][0] = 0
         # if we can't cross corners and this is an obstacle, exclude all neighbors next to this one
-        if CROSS_CORNERS is False and map.map[new_y][new_x].square_type is MapSquareEnum.OBSTACLE:
-            include_neighbors[0][0] = 0
-            include_neighbors[1][0] = 0
-            include_neighbors[2][0] = 0
+            if CROSS_CORNERS is False:
+                include_neighbors[0][0] = 0
+                include_neighbors[1][0] = 0
+                include_neighbors[2][0] = 0
         # middle right
         new_x = curr_node[0] + 1
         new_y = curr_node[1]
@@ -75,10 +78,10 @@ def Dijkstra(map, gen_frames, frames, scale=1):
         if not(new_x < map.num_cols and map.map[new_y][new_x].square_type is not MapSquareEnum.OBSTACLE):
             include_neighbors[1][2] = 0
         # if we can't cross corners and this is an obstacle, exclude all neighbors next to this one
-        if CROSS_CORNERS is False and map.map[new_y][new_x].square_type is MapSquareEnum.OBSTACLE:
-            include_neighbors[0][2] = 0
-            include_neighbors[1][2] = 0
-            include_neighbors[2][2] = 0
+            if CROSS_CORNERS is False:
+                include_neighbors[0][2] = 0
+                include_neighbors[1][2] = 0
+                include_neighbors[2][2] = 0
         # bottom left
         new_x = curr_node[0] - 1
         new_y = curr_node[1] + 1
@@ -92,10 +95,10 @@ def Dijkstra(map, gen_frames, frames, scale=1):
         if not(new_y < map.num_rows and map.map[new_y][new_x].square_type is not MapSquareEnum.OBSTACLE):
             include_neighbors[2][1] = 0
         # if we can't cross corners and this is an obstacle, exclude all neighbors next to this one
-        if CROSS_CORNERS is False and map.map[new_y][new_x].square_type is MapSquareEnum.OBSTACLE:
-            include_neighbors[2][0] = 0
-            include_neighbors[2][1] = 0
-            include_neighbors[2][2] = 0
+            if CROSS_CORNERS is False:
+                include_neighbors[2][0] = 0
+                include_neighbors[2][1] = 0
+                include_neighbors[2][2] = 0
         # bottom right
         new_x = curr_node[0] + 1
         new_y = curr_node[1] + 1
@@ -142,7 +145,21 @@ def Dijkstra(map, gen_frames, frames, scale=1):
             frames.append(map.gen_img(scale=scale))
             anim_count = 0
 
-map1 = Map(os.getcwd() + "\\Project1.csv")
-Dijkstra(map, False, [], scale=10)
-map1.draw_path()
-map1.gen_img(scale=20).show()
+map1 = Map(os.getcwd() + "/Project1.csv")
+Dijkstra(map1, False, [], scale=10)
+path = map1.draw_path()
+x_pts = [p[0] for p in path]
+y_pts = [p[1] for p in path]
+t = np.linspace(0, 1, num=len(path))
+t_spl = np.linspace(0, 1, num=100)
+x_spl = CubicSpline(t, x_pts)
+y_spl = CubicSpline(t, y_pts)
+fig, ax = plt.subplots(1, 1)
+ax.xaxis.set_ticks_position('top')
+plt.gca().invert_yaxis()
+ax.set_xlim([0, map1.num_cols])
+ax.set_ylim([map1.num_rows, 0])
+ax.plot(x_spl(t_spl), y_spl(t_spl))
+# ax[1].plot(x_spl(t), y_spl(t))
+plt.show()
+# map1.gen_img(scale=20).show()

@@ -2,6 +2,7 @@ from enum import Enum
 import csv
 import os
 from PIL import Image, ImageDraw
+from collections import deque
 
 COLOR_FREE = (255, 255, 255)
 COLOR_OBSTACLE = (0, 0, 0)
@@ -70,12 +71,15 @@ class Map:
         self.map[y][x].parent = (parent_x, parent_y)
 
     def draw_path(self):
+        path = deque()
         curr_cell = self.goal
         while curr_cell != self.start:
+            path.appendleft(curr_cell)
             x = curr_cell[0]
             y = curr_cell[1]
             self.map[y][x].in_path = True
             curr_cell = self.map[y][x].parent
+        return path
     
     def gen_img(self, scale=1):
         frame = Image.new("RGB", (self.num_cols * scale, self.num_rows * scale), COLOR_FREE)
