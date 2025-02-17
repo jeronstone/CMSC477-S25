@@ -148,17 +148,19 @@ def Dijkstra(map, gen_frames, frames, scale=1):
 map1 = Map(os.getcwd() + "/Project1.csv")
 Dijkstra(map1, False, [], scale=10)
 path = map1.draw_path()
-x_pts = [p[0] for p in path]
-y_pts = [p[1] for p in path]
+x_pts = [p[0]-0.5 for p in path]
+y_pts = [p[1]-0.5 for p in path]
 t = np.linspace(0, 1, num=len(path))
 t_spl = np.linspace(0, 1, num=100)
 x_spl = CubicSpline(t, x_pts)
 y_spl = CubicSpline(t, y_pts)
 fig, ax = plt.subplots(1, 1)
 ax.xaxis.set_ticks_position('top')
-plt.gca().invert_yaxis()
 ax.set_xlim([0, map1.num_cols])
 ax.set_ylim([map1.num_rows, 0])
+plt.xticks(np.arange(0, map1.num_cols, 1))
+plt.yticks(np.arange(0, map1.num_rows, 1))
+plt.grid('True')
 ax.plot(x_spl(t_spl), y_spl(t_spl))
 # ax[1].plot(x_spl(t), y_spl(t))
 plt.show()

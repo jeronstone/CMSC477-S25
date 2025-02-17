@@ -24,7 +24,7 @@ april_to_coords = {
     42: (9.0, 2.5),
     43: (10.0, 2.5),
     44: (9.0, 4.5),
-    45: (10, 4.5),
+    45: (10.0, 4.5),
     46: (9.5, 6.0)
 }
 
@@ -55,14 +55,9 @@ if __name__ == '__main__':
     marker_size_m = 0.153 # Size of the AprilTag in meters
     apriltag = AprilTagDetector(K, threads=2, marker_size_m=marker_size_m)
 
-    offsets = [
-        (33, (1, 0)), 
-        (33, (2, 0)),
-        (33, (2, 1))
-    ]
-    curr = 0
-
-    while (True):
+    # use initial apriltag to find current position in world frame
+    initial_tag = 39
+    while True:
         try:
             img = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
         except Empty:
@@ -73,32 +68,73 @@ if __name__ == '__main__':
         gray.astype(np.uint8)
 
         detections = apriltag.find_tags(gray)
+        if len(detections) > 0:
+            for detection in detections:
+                if detection.tag_id == initial_tag:
+                    # create T_wa matrix (from world frame to apriltag frame)
+                    tag_position = april_to_coords[initial_tag]
+                    T_wa = np.array([[0, 0, 0, tag_position[0]], 
+                                     [0, 0, 0, tag_position[1]],
+                                     [0, 0, 0,               0],
+                                     [0, 0, 0,               1]])
+                    
+                    # create T_ac matrix (from apriltag frame to camera frame)
+                    t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
+                    T_ac = np.array([[0, 0, 0, t_ca[0]], 
+                                     [0, 0, 0, t_ca[1]],
+                                     [0, 0, 0,       0],
+                                     [0, 0, 0,       1]])
+                    
+                    # multiply them to get the position of the camera in the world
+                    T_wc = T_wa * T_ac
+                    print(t_ca)
 
-        if curr < len(offsets):
+                    break
 
-            if len(detections) < 1:
-                ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+    # offsets = [
+    #     (33, (1, 0)), 
+    #     (33, (2, 0)),
+    #     (33, (2, 1))
+    # ]
+    # curr = 0
 
-            for detect in detections:
-                if detect.tag_id == offsets[curr][0]:
-                    res, deltas = get_ibvs_speeds(detect, offsets[curr][1])
+    # while (True):
+    #     try:
+    #         img = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
+    #     except Empty:
+    #         time.sleep(0.001)
+    #         continue
 
-                    error = np.linalg.norm(deltas)
-                    #print(f'Error: {error}')
+    #     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    #     gray.astype(np.uint8)
 
-                    if error > 0.05:
-                        ep_chassis.drive_speed(x=res.item(1), y=0, z=res.item(0), timeout=5)
-                    else:
-                        ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
-                        curr += 1
-                        print('curr ++')
-                        break
+    #     detections = apriltag.find_tags(gray)
 
-        else:
-            ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+    #     if curr < len(offsets):
+
+    #         if len(detections) < 1:
+    #             ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+
+    #         for detect in detections:
+    #             if detect.tag_id == offsets[curr][0]:
+    #                 res, deltas = get_ibvs_speeds(detect, offsets[curr][1])
+
+    #                 error = np.linalg.norm(deltas)
+    #                 #print(f'Error: {error}')
+
+    #                 if error > 0.05:
+    #                     ep_chassis.drive_speed(x=res.item(1), y=0, z=res.item(0), timeout=5)
+    #                 else:
+    #                     ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+    #                     curr += 1
+    #                     print('curr ++')
+    #                     break
+
+    #     else:
+    #         ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
         
-        draw_detections(img, detections)
-        cv2.imshow("img", img)
-        if cv2.waitKey(1) == ord('q'):
-            ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
-            break
+    #     draw_detections(img, detections)
+        # cv2.imshow("img", img)
+        # if cv2.waitKey(1) == ord('q'):
+        #     ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+        #     break

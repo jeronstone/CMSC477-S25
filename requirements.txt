@@ -3,3 +3,5 @@ opencv-python
 robomaster
 pillow
 numpy
+scipy
+matplotlib
