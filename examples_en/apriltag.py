@@ -63,7 +63,12 @@ def detect_tag_loop(ep_robot, ep_chassis, ep_camera, apriltag):
             detection = detections[0]
 
             t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-            #print('t_ca', t_ca)
+            print('R_ca', R_ca)
+
+            # ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+            # first_detect = 0
+
+            # continue
 
             if first_detect == 0:
                 prev_t = time.time()-0.01
