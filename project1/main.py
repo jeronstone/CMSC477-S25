@@ -82,7 +82,7 @@ if __name__ == '__main__':
                     
                     # create T_ac matrix (from apriltag frame to camera frame)
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-                    y_180_rot = np.array([[1,0,0],[0,-1,0],[0,0,-1]])
+                    y_180_rot = np.array([[-1,0,0],[0,1,0],[0,0,-1]])
                     R_ca = np.matmul(R_ca, y_180_rot)
                     T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
                                      [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
@@ -93,9 +93,9 @@ if __name__ == '__main__':
                     # multiply them to get the position of the camera in the world
                     T_wc = np.matmul(T_wa, T_ac)
                     # print(T_wc)
-                    # print((T_wc[0,3]/0.266, T_wc[1,3]/0.266, T_wc[2,3]/0.266))
+                    print((T_wc[0,3]/0.266, T_wc[1,3]/0.266, T_wc[2,3]/0.266))
                     # print(((tag_position[0]*0.266 + t_ca[2])/0.266, (tag_position[1]*0.266 + t_ca[0])/0.266))
-                    print(T_ac)
+                    # print(T_ac)
                     # print(T_ac)
 
                     break
