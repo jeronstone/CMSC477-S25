@@ -48,6 +48,7 @@ if __name__ == '__main__':
     ep_robot = robot.Robot()
     ep_robot.initialize(conn_type="sta", sn="3JKCH8800100YR")
     ep_chassis = ep_robot.chassis
+    ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
     ep_camera = ep_robot.camera
     ep_camera.start_video_stream(display=False, resolution=camera.STREAM_360P)
 
@@ -56,8 +57,9 @@ if __name__ == '__main__':
     apriltag = AprilTagDetector(K, threads=2, marker_size_m=marker_size_m)
 
     # use initial apriltag to find current position in world frame
-    initial_tag = 45
+    initial_tag = 43
     while True:
+        ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
         try:
             img = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
         except Empty:
@@ -75,23 +77,26 @@ if __name__ == '__main__':
                     tag_position = april_to_coords[initial_tag]
                     T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[0]*0.266], 
                                      [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[1]*0.266],
-                                     [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],               0],
-                                     [0,                    0,                    0,                    1            ]])
+                                     [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],             0.5*0.266],
+                                     [                   0,                    0,                    0,                     1]])
                     
                     # create T_ac matrix (from apriltag frame to camera frame)
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-                    T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[2]], 
-                                     [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[0]],
-                                     [R_ca[2,0], R_ca[2,1], R_ca[2,2],       0],
-                                     [0,         0,         0,         1    ]])
+                    y_180_rot = np.array([[1,0,0],[0,-1,0],[0,0,-1]])
+                    R_ca = np.matmul(R_ca, y_180_rot)
+                    T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
+                                     [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
+                                     [R_ca[2,0], R_ca[2,1], R_ca[2,2], t_ca[2]],
+                                     [        0,         0,         0,       1]])
                     T_ac = np.linalg.inv(T_ca)
 
                     # multiply them to get the position of the camera in the world
                     T_wc = np.matmul(T_wa, T_ac)
                     # print(T_wc)
-                    print((T_wc[0,3]/0.266, T_wc[1,3]/0.266))
+                    # print((T_wc[0,3]/0.266, T_wc[1,3]/0.266, T_wc[2,3]/0.266))
                     # print(((tag_position[0]*0.266 + t_ca[2])/0.266, (tag_position[1]*0.266 + t_ca[0])/0.266))
-                    # print(t_ca)
+                    print(T_ac)
+                    # print(T_ac)
 
                     break
         draw_detections(img, detections)
