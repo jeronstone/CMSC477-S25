@@ -11,7 +11,7 @@ from ibvs import get_ibvs_speeds
 april_to_coords = {
     30: (3.0,   2.5,    np.array([[0,0,-1],[-1,0,0],[0,1,0]])),
     31: (4.0,   2.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
-    32: (3.0,   4.5,    np.array([[0,0,-1],[-1,0,0],[0,1,0]])),
+    32: (3.0,   4.5,    np.array([[0,-1,0],[0,0,-1],[1,0,0]])),
     33: (4.0,   4.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
     34: (3.5,   6.0,    np.array([[1,0,0],[0,0,-1],[0,1,0]])),  
     35: (5.5,   2.0,    np.array([[1,0,0],[0,0,-1],[0,1,0]])),
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     apriltag = AprilTagDetector(K, threads=2, marker_size_m=marker_size_m)
 
     # use initial apriltag to find current position in world frame
-    initial_tag = 39
+    initial_tag = 45
     while True:
         try:
             img = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
@@ -73,24 +73,32 @@ if __name__ == '__main__':
                 if detection.tag_id == initial_tag:
                     # create T_wa matrix (from world frame to apriltag frame)
                     tag_position = april_to_coords[initial_tag]
-                    T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[0]], 
-                                     [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[1]],
+                    T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[0]*0.266], 
+                                     [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[1]*0.266],
                                      [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],               0],
                                      [0,                    0,                    0,                    1            ]])
                     
                     # create T_ac matrix (from apriltag frame to camera frame)
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-                    R_ac = np.linalg.inv(R_ca)
-                    T_ac = np.array([[R_ac[0,0], R_ac[0,1], R_ac[0,2], t_ca[0]], 
-                                     [R_ac[1,0], R_ac[1,1], R_ac[1,2], t_ca[1]],
-                                     [R_ac[2,0], R_ac[2,1], R_ac[2,2],       0],
+                    T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[2]], 
+                                     [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[0]],
+                                     [R_ca[2,0], R_ca[2,1], R_ca[2,2],       0],
                                      [0,         0,         0,         1    ]])
-                    
+                    T_ac = np.linalg.inv(T_ca)
+
                     # multiply them to get the position of the camera in the world
-                    T_wc = T_wa * T_ac
-                    print(t_ca)
+                    T_wc = np.matmul(T_wa, T_ac)
+                    # print(T_wc)
+                    print((T_wc[0,3]/0.266, T_wc[1,3]/0.266))
+                    # print(((tag_position[0]*0.266 + t_ca[2])/0.266, (tag_position[1]*0.266 + t_ca[0])/0.266))
+                    # print(t_ca)
 
                     break
+        draw_detections(img, detections)
+        cv2.imshow("img", img)
+        if cv2.waitKey(1) == ord('q'):
+            ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+            break
 
     # offsets = [
     #     (33, (1, 0)), 
