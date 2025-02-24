@@ -73,17 +73,18 @@ if __name__ == '__main__':
                 if detection.tag_id == initial_tag:
                     # create T_wa matrix (from world frame to apriltag frame)
                     tag_position = april_to_coords[initial_tag]
-                    T_wa = np.array([[0, 0, 0, tag_position[0]], 
-                                     [0, 0, 0, tag_position[1]],
-                                     [0, 0, 0,               0],
-                                     [0, 0, 0,               1]])
+                    T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[0]], 
+                                     [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[1]],
+                                     [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],               0],
+                                     [0,                    0,                    0,                    1            ]])
                     
                     # create T_ac matrix (from apriltag frame to camera frame)
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-                    T_ac = np.array([[0, 0, 0, t_ca[0]], 
-                                     [0, 0, 0, t_ca[1]],
-                                     [0, 0, 0,       0],
-                                     [0, 0, 0,       1]])
+                    R_ac = np.linalg.inv(R_ca)
+                    T_ac = np.array([[R_ac[0,0], R_ac[0,1], R_ac[0,2], t_ca[0]], 
+                                     [R_ac[1,0], R_ac[1,1], R_ac[1,2], t_ca[1]],
+                                     [R_ac[2,0], R_ac[2,1], R_ac[2,2],       0],
+                                     [0,         0,         0,         1    ]])
                     
                     # multiply them to get the position of the camera in the world
                     T_wc = T_wa * T_ac
