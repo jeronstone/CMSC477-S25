@@ -8,24 +8,28 @@ from robomaster import camera
 from ApriltagDetector import *
 from ibvs import get_ibvs_speeds
 
+april_left =  np.array([[0,1,0],[0,0,-1],[-1,0,0]])  # -90deg z rotation,  +90deg x rotation
+april_right = np.array([[0,-1,0],[0,0,1],[-1,0,0]])  # +90deg z rotation,  -90deg x rotation
+april_down =  np.array([[1,0,0],[0,0,-1],[0,1,0]])   # +90deg x rotation
+april_up =    np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # +180deg z rotation, +90deg x rotation
 april_to_coords = {
-    30: (3.0,   2.5,    np.array([[0,0,-1],[-1,0,0],[0,1,0]])),
-    31: (4.0,   2.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
-    32: (3.0,   4.5,    np.array([[0,-1,0],[0,0,-1],[1,0,0]])),
-    33: (4.0,   4.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
-    34: (3.5,   6.0,    np.array([[1,0,0],[0,0,-1],[0,1,0]])),  
-    35: (5.5,   2.0,    np.array([[1,0,0],[0,0,-1],[0,1,0]])),
-    36: (7.5,   2.0,    np.array([[1,0,0],[0,0,-1],[0,1,0]])),    
-    37: (6.5,   5.0,    np.array([[-1,0,0],[0,0,1],[0,1,0]])),  
-    38: (6.0,   6.5,    np.array([[0,0,-1],[-1,0,0],[0,1,0]])),
-    39: (7.0,   6.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
-    40: (6.0,   8.5,    np.array([[0,0,-1],[-1,0,0],[0,1,0]])),
-    41: (7.0,   8.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
-    42: (9.0,   2.5,    np.array([[0,0,-1],[-1,0,0],[0,1,0]])),
-    43: (10.0,  2.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
-    44: (9.0,   4.5,    np.array([[0,0,-1],[-1,0,0],[0,1,0]])),
-    45: (10.0,  4.5,    np.array([[0,0,1],[1,0,0],[0,1,0]])),
-    46: (9.5,   6.0,    np.array([[1,0,0],[0,0,-1],[0,1,0]]))
+    30: (3.0,   2.5, april_left),
+    31: (4.0,   2.5, april_right),
+    32: (3.0,   4.5, april_left),
+    33: (4.0,   4.5, april_right),
+    34: (3.5,   6.0, april_down),  
+    35: (5.5,   2.0, april_down),
+    36: (7.5,   2.0, april_down),    
+    37: (6.5,   5.0, april_up),  
+    38: (6.0,   6.5, april_left),
+    39: (7.0,   6.5, april_right),
+    40: (6.0,   8.5, april_left),
+    41: (7.0,   8.5, april_right),
+    42: (9.0,   2.5, april_left),
+    43: (10.0,  2.5, april_right),
+    44: (9.0,   4.5, april_left),
+    45: (10.0,  4.5, april_right),
+    46: (9.5,   6.0, april_down)
 }
 
 def draw_detections(frame, detections):
