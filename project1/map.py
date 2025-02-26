@@ -79,6 +79,7 @@ class Map:
             y = curr_cell[1]
             self.map[y][x].in_path = True
             curr_cell = self.map[y][x].parent
+        path.appendleft(curr_cell)
         return path
     
     def gen_img(self, scale=1):

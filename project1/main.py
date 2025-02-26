@@ -63,7 +63,6 @@ if __name__ == '__main__':
     # use initial apriltag to find current position in world frame
     initial_tag = 43
     while True:
-        ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
         try:
             img = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
         except Empty:
@@ -108,6 +107,26 @@ if __name__ == '__main__':
         if cv2.waitKey(1) == ord('q'):
             ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
             break
+
+    ### TRAJECTORY FOLLOWING PSEUDOCODE:
+    # start program, init robot, etc.
+    # start capturing images
+    # for each capture:
+        # detect apriltags in capture
+        # if no detections:
+            # spin in place
+        # else:
+            # for each detection:
+                # get camera pose estimation in world frame: pe_wc_i
+                # (optional: store how close the apriltag is to the center of the image)
+            # get the average of all estimations: 1/n * sum(pe_wc_i) over all i: pe_wc
+            # (optional: make it a weighted average based on how close the apriltag is to the center of the image, since there are distortions at the camera edges)
+            # if |pe_wc - pd_wc(t)| < threshold, where pd_wc(t) is desired pose at time t:
+                # t += 1
+                # if t > path length:
+                    # exit capture loop
+            # error = pe_wc - pd_wc(t)
+            # PID calculations; use error and dt to set motor speed
 
     # offsets = [
     #     (33, (1, 0)), 
