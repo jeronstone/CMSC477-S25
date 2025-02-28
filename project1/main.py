@@ -8,10 +8,12 @@ from robomaster import camera
 from ApriltagDetector import *
 from ibvs import get_ibvs_speeds
 
-april_left =  np.array([[0,1,0],[0,0,-1],[-1,0,0]])  # -90deg z rotation,  +90deg x rotation
-april_right = np.array([[0,-1,0],[0,0,1],[-1,0,0]])  # +90deg z rotation,  -90deg x rotation
-april_down =  np.array([[1,0,0],[0,0,-1],[0,1,0]])   # +90deg x rotation
-april_up =    np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # +180deg z rotation, +90deg x rotation
+APRILTAG_SIZE = 0.2666 # apriltag size is 26.66cm, and we are working in meters
+
+april_left  = np.array([[1,0,0],[0,0,1],[0,-1,0]])   # -90deg x rotation
+april_right = np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # -90deg x rotation, 180deg z rotation
+april_up    = np.array([[0,0,1],[0,1,0],[-1,0,0]])   # 90deg y rotation
+april_down  = np.array([[0,0,-1],[1,0,0],[0,-1,0]])  # -90deg y rotation, 180deg z rotation
 april_to_coords = {
     30: (3.0,   2.5, april_left),
     31: (4.0,   2.5, april_right),
@@ -32,7 +34,7 @@ april_to_coords = {
     46: (9.5,   6.0, april_down)
 }
 
-def draw_detections(frame, detections):
+def draw_detections(frame, detections, coords):
     for detection in detections:
         pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
 
@@ -44,6 +46,9 @@ def draw_detections(frame, detections):
         bottom_left = tuple(pts[3][0])  # Fourth corner
         cv2.line(frame, top_left, bottom_right, color=(0, 0, 255), thickness=2)
         cv2.line(frame, top_right, bottom_left, color=(0, 0, 255), thickness=2)
+        center_x = int(((top_left[0] + top_right[0])/2) - 4*len(coords[detection.tag_id]))
+        center_y = int((top_left[1] + bottom_left[1])/2)
+        cv2.putText(frame, str(detection.tag_id) + ":" + coords[detection.tag_id], (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
 if __name__ == '__main__':
     # More legible printing from numpy.
@@ -62,6 +67,7 @@ if __name__ == '__main__':
 
     # use initial apriltag to find current position in world frame
     initial_tag = 43
+
     while True:
         try:
             img = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
@@ -73,36 +79,36 @@ if __name__ == '__main__':
         gray.astype(np.uint8)
 
         detections = apriltag.find_tags(gray)
+        coords_dict = {}
         if len(detections) > 0:
             for detection in detections:
-                if detection.tag_id == initial_tag:
-                    # create T_wa matrix (from world frame to apriltag frame)
-                    tag_position = april_to_coords[initial_tag]
-                    T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[0]*0.266], 
-                                     [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[1]*0.266],
-                                     [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],             0.5*0.266],
-                                     [                   0,                    0,                    0,                     1]])
-                    
-                    # create T_ac matrix (from apriltag frame to camera frame)
-                    t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-                    y_180_rot = np.array([[-1,0,0],[0,1,0],[0,0,-1]])
-                    R_ca = np.matmul(R_ca, y_180_rot)
-                    T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
-                                     [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
-                                     [R_ca[2,0], R_ca[2,1], R_ca[2,2], t_ca[2]],
-                                     [        0,         0,         0,       1]])
-                    T_ac = np.linalg.inv(T_ca)
+                # if detection.tag_id == initial_tag:
+                # create T_wa matrix (from world frame to apriltag frame)
+                tag_position = april_to_coords[detection.tag_id]
+                T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[1]*APRILTAG_SIZE], 
+                                 [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[0]*APRILTAG_SIZE],
+                                 [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],             0.5*APRILTAG_SIZE],
+                                 [                   0,                    0,                    0,                             1]])
+                
+                # create T_ac matrix (from apriltag frame to camera frame)
+                t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
+                # y_180_rot = np.array([[-1,0,0],[0,1,0],[0,0,-1]])
+                # R_ca = np.matmul(R_ca, y_180_rot)
+                T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
+                                 [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
+                                 [R_ca[2,0], R_ca[2,1], R_ca[2,2], t_ca[2]],
+                                 [        0,         0,         0,       1]])
+                T_ac = np.linalg.inv(T_ca)
 
-                    # multiply them to get the position of the camera in the world
-                    T_wc = np.matmul(T_wa, T_ac)
-                    # print(T_wc)
-                    print((T_wc[0,3]/0.266, T_wc[1,3]/0.266, T_wc[2,3]/0.266))
-                    # print(((tag_position[0]*0.266 + t_ca[2])/0.266, (tag_position[1]*0.266 + t_ca[0])/0.266))
-                    # print(T_ac)
-                    # print(T_ac)
-
-                    break
-        draw_detections(img, detections)
+                # multiply them to get the position of the camera in the world
+                T_wc = np.matmul(T_wa, T_ac)
+                # print(T_wc)
+                print((T_wc[1,3]/APRILTAG_SIZE, T_wc[0,3]/APRILTAG_SIZE, T_wc[2,3]/APRILTAG_SIZE))
+                coords_dict[detection.tag_id] = str((round(T_wc[1,3]/APRILTAG_SIZE, 2), round(T_wc[0,3]/APRILTAG_SIZE, 2), round(T_wc[2,3]/APRILTAG_SIZE, 2)))
+                # print(((tag_position[0]*APRILTAG_SIZE + t_ca[2])/APRILTAG_SIZE, (tag_position[1]*APRILTAG_SIZE + t_ca[0])/APRILTAG_SIZE))
+                # print(T_ac)
+                # print(T_ac)
+        draw_detections(img, detections, coords_dict)
         cv2.imshow("img", img)
         if cv2.waitKey(1) == ord('q'):
             ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
@@ -124,9 +130,10 @@ if __name__ == '__main__':
             # if |pe_wc - pd_wc(t)| < threshold, where pd_wc(t) is desired pose at time t:
                 # t += 1
                 # if t > path length:
+                    # stop motors
                     # exit capture loop
             # error = pe_wc - pd_wc(t)
-            # PID calculations; use error and dt to set motor speed
+            # PID calculations; use error and dt to set motor speed (also stop spinning by setting angular to 0)
 
     # offsets = [
     #     (33, (1, 0)), 
