@@ -7,8 +7,9 @@ from robomaster import robot
 from robomaster import camera
 from ApriltagDetector import *
 from ibvs import get_ibvs_speeds
+from dijkstra import solve_maze
 
-APRILTAG_SIZE = 0.2666 # apriltag size is 26.66cm, and we are working in meters
+APRILTAG_SIZE = 0.2666
 
 april_left  = np.array([[1,0,0],[0,0,1],[0,-1,0]])   # -90deg x rotation
 april_right = np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # -90deg x rotation, 180deg z rotation
@@ -34,7 +35,7 @@ april_to_coords = {
     46: (9.5,   6.0, april_down)
 }
 
-def draw_detections(frame, detections, coords):
+def draw_detections(frame, detections, coords=None):
     for detection in detections:
         pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
 
@@ -46,9 +47,9 @@ def draw_detections(frame, detections, coords):
         bottom_left = tuple(pts[3][0])  # Fourth corner
         cv2.line(frame, top_left, bottom_right, color=(0, 0, 255), thickness=2)
         cv2.line(frame, top_right, bottom_left, color=(0, 0, 255), thickness=2)
-        center_x = int(((top_left[0] + top_right[0])/2) - 4*len(coords[detection.tag_id]))
-        center_y = int((top_left[1] + bottom_left[1])/2)
-        cv2.putText(frame, str(detection.tag_id) + ":" + coords[detection.tag_id], (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        #center_x = int(((top_left[0] + top_right[0])/2) - 4*len(coords[detection.tag_id]))
+        #center_y = int((top_left[1] + bottom_left[1])/2)
+        #cv2.putText(frame, str(detection.tag_id) + ":" + coords[detection.tag_id], (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
 if __name__ == '__main__':
     # More legible printing from numpy.
@@ -65,6 +66,15 @@ if __name__ == '__main__':
     marker_size_m = 0.153 # Size of the AprilTag in meters
     apriltag = AprilTagDetector(K, threads=2, marker_size_m=marker_size_m)
 
+    t_spl, x_spl, y_spl = solve_maze()
+    t = 0.0
+    e_threshold = 0.075
+
+    first_detect = 0
+    prev_t = time.time()
+    prev_error = 0
+    integral = 0
+
     # use initial apriltag to find current position in world frame
     initial_tag = 43
 
@@ -79,10 +89,13 @@ if __name__ == '__main__':
         gray.astype(np.uint8)
 
         detections = apriltag.find_tags(gray)
-        coords_dict = {}
+        pe_wc = []
+
         if len(detections) > 0:
+            closest_T_wc = None
+            prev_tca = None
             for detection in detections:
-                # if detection.tag_id == initial_tag:
+                #if detection.tag_id == initial_tag:
                 # create T_wa matrix (from world frame to apriltag frame)
                 tag_position = april_to_coords[detection.tag_id]
                 T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[1]*APRILTAG_SIZE], 
@@ -103,12 +116,70 @@ if __name__ == '__main__':
                 # multiply them to get the position of the camera in the world
                 T_wc = np.matmul(T_wa, T_ac)
                 # print(T_wc)
-                print((T_wc[1,3]/APRILTAG_SIZE, T_wc[0,3]/APRILTAG_SIZE, T_wc[2,3]/APRILTAG_SIZE))
-                coords_dict[detection.tag_id] = str((round(T_wc[1,3]/APRILTAG_SIZE, 2), round(T_wc[0,3]/APRILTAG_SIZE, 2), round(T_wc[2,3]/APRILTAG_SIZE, 2)))
-                # print(((tag_position[0]*APRILTAG_SIZE + t_ca[2])/APRILTAG_SIZE, (tag_position[1]*APRILTAG_SIZE + t_ca[0])/APRILTAG_SIZE))
+                #print((T_wc[1,3]/APRILTAG_SIZE, T_wc[0,3]/APRILTAG_SIZE, T_wc[2,3]/APRILTAG_SIZE))
+                pe_wc.append((T_wc[0,3], T_wc[1,3]))
+                # print(((tag_position[0]*0.266 + t_ca[2])/0.266, (tag_position[1]*0.266 + t_ca[0])/0.266))
                 # print(T_ac)
                 # print(T_ac)
-        draw_detections(img, detections, coords_dict)
+
+                if prev_tca is None or np.linalg.norm(np.array([t_ca[0], t_ca[1]])) < np.linalg.norm(np.array([prev_tca[0], prev_tca[1]])):
+                    prev_tca = t_ca
+                    closest_T_wc = T_wc #(T_wc[1,3], T_wc[0,3])
+
+                #break
+            
+            # avg_pos = [0, 0]
+            # for pe_i in pe_wc:
+            #     for j in range(2):
+            #         avg_pos[j] += (pe_i[j]/len(pe_wc))
+            #         # optional: weight by |t_ca| proximity to 0 (close to middle of camera frame)
+
+            avg_pos = (closest_T_wc[0,3], closest_T_wc[1,3])
+            T_cw = np.linalg.inv(closest_T_wc)
+            R_cw = np.array([[T_cw[0,0], T_cw[0,1], T_cw[0,2]],
+                            [T_cw[1,0], T_cw[1,1], T_cw[1,2]],
+                            [T_cw[2,0], T_cw[2,1], T_cw[2,2]]]) 
+            
+            avg_pos = np.array(avg_pos)
+            pd_w_t = np.array([y_spl(t/len(t_spl))*0.266, x_spl(t/len(t_spl))*0.266])
+
+            #print(f'BEFORE: \t curr_pos: {avg_pos} \t spl: {pd_w_t}')
+
+            e_w = avg_pos - pd_w_t
+
+            if np.linalg.norm(e_w) < e_threshold:
+                t+=1.0
+                if (t > len(t_spl)):
+                    break
+            
+            #ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+
+            # curr_t = time.time()
+            # dt = curr_t - prev_t
+            
+            # integral += (e_w*dt)
+            # deriv = (e_w - prev_error) / dt
+
+            velos = [0, 0]
+            velos[1] = -0.75*e_w[1] #+ -0.1*integral #+ 100.0*deriv
+            velos[0] = -5*e_w[0]
+
+            print(f'BEFORE: \t curr_pos: {avg_pos} \t spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velos: {velos}')
+
+            velos = np.matmul(R_cw, np.array([[velos[1]], [velos[0]], [0]]))
+            #print(R_cw)
+            
+            print(f'AFTER : \t curr_pos: {avg_pos} \t spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velox: {-velos[0,0]} \t Veloy: {velos[1,0]}')
+
+            ep_chassis.drive_speed(x=-velos[0, 0], y=velos[1, 0], z=0, timeout=5)
+
+            # prev_error = e_w
+            # prev_t = curr_t
+
+        else:
+            ep_chassis.drive_speed(x=0, y=0, z=-15, timeout=5) # spin in place
+
+        draw_detections(img, detections)
         cv2.imshow("img", img)
         if cv2.waitKey(1) == ord('q'):
             ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
@@ -134,6 +205,11 @@ if __name__ == '__main__':
                     # exit capture loop
             # error = pe_wc - pd_wc(t)
             # PID calculations; use error and dt to set motor speed (also stop spinning by setting angular to 0)
+            # PID calculations; use error and dt to set motor speed
+                
+
+        
+
 
     # offsets = [
     #     (33, (1, 0)), 
