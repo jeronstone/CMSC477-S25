@@ -11,10 +11,10 @@ from dijkstra import solve_maze
 
 APRILTAG_SIZE = 0.2666
 
-april_left  = np.array([[1,0,0],[0,0,1],[0,-1,0]])   # -90deg x rotation
-april_right = np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # -90deg x rotation, 180deg z rotation
-april_up    = np.array([[0,0,1],[0,1,0],[-1,0,0]])   # 90deg y rotation
-april_down  = np.array([[0,0,-1],[1,0,0],[0,-1,0]])  # -90deg y rotation, 180deg z rotation
+april_left  = np.array([[0,0,1],[1,0,0],[0,1,0]]) #np.array([[1,0,0],[0,0,1],[0,-1,0]])   # -90deg x rotation
+april_right = np.array([[0,0,-1],[-1,0,0],[0,1,0]]) #np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # -90deg x rotation, 180deg z rotation
+april_up    = np.array([[-1,0,0],[0,0,1],[0,1,0]]) #np.array([[0,0,1],[0,1,0],[-1,0,0]])   # 90deg y rotation
+april_down  = np.array([[1,0,0],[0,0,-1],[0,1,0]]) #np.array([[0,0,-1],[1,0,0],[0,-1,0]])  # -90deg y rotation, 180deg z rotation
 april_to_coords = {
     30: (3.0,   2.5, april_left),
     31: (4.0,   2.5, april_right),
@@ -37,6 +37,8 @@ april_to_coords = {
 
 def draw_detections(frame, detections, coords=None):
     for detection in detections:
+        if detection.tag_id < 30 or detection.tag_id > 46:
+            continue
         pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
 
         frame = cv2.polylines(frame, [pts], isClosed=True, color=(0, 0, 255), thickness=2)
@@ -47,9 +49,9 @@ def draw_detections(frame, detections, coords=None):
         bottom_left = tuple(pts[3][0])  # Fourth corner
         cv2.line(frame, top_left, bottom_right, color=(0, 0, 255), thickness=2)
         cv2.line(frame, top_right, bottom_left, color=(0, 0, 255), thickness=2)
-        #center_x = int(((top_left[0] + top_right[0])/2) - 4*len(coords[detection.tag_id]))
-        #center_y = int((top_left[1] + bottom_left[1])/2)
-        #cv2.putText(frame, str(detection.tag_id) + ":" + coords[detection.tag_id], (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        center_x = int(((top_left[0] + top_right[0])/2) - 4*len(coords[detection.tag_id]))
+        center_y = int((top_left[1] + bottom_left[1])/2)
+        cv2.putText(frame, str(detection.tag_id) + ":" + coords[detection.tag_id], (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
 if __name__ == '__main__':
     # More legible printing from numpy.
@@ -74,6 +76,8 @@ if __name__ == '__main__':
     prev_t = time.time()
     prev_error = 0
     integral = 0
+    closest_april_id = -1
+    coords = {}
 
     # use initial apriltag to find current position in world frame
     initial_tag = 43
@@ -95,12 +99,14 @@ if __name__ == '__main__':
             closest_T_wc = None
             prev_tca = None
             for detection in detections:
+                if detection.tag_id < 30 or detection.tag_id > 46:
+                    continue
                 #if detection.tag_id == initial_tag:
                 # create T_wa matrix (from world frame to apriltag frame)
                 tag_position = april_to_coords[detection.tag_id]
-                T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[1]*APRILTAG_SIZE], 
-                                 [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[0]*APRILTAG_SIZE],
-                                 [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],             0.5*APRILTAG_SIZE],
+                T_wa = np.array([[tag_position[2][0,0], tag_position[2][0,1], tag_position[2][0,2], tag_position[0]*APRILTAG_SIZE], 
+                                 [tag_position[2][1,0], tag_position[2][1,1], tag_position[2][1,2], tag_position[1]*APRILTAG_SIZE],
+                                 [tag_position[2][2,0], tag_position[2][2,1], tag_position[2][2,2],            -0.5*APRILTAG_SIZE],
                                  [                   0,                    0,                    0,                             1]])
                 
                 # create T_ac matrix (from apriltag frame to camera frame)
@@ -117,23 +123,28 @@ if __name__ == '__main__':
                 T_wc = np.matmul(T_wa, T_ac)
                 # print(T_wc)
                 #print((T_wc[1,3]/APRILTAG_SIZE, T_wc[0,3]/APRILTAG_SIZE, T_wc[2,3]/APRILTAG_SIZE))
+                coords[detection.tag_id] = str((round(T_wc[0,3]/APRILTAG_SIZE,3), round(T_wc[1,3]/APRILTAG_SIZE,3)))
                 pe_wc.append((T_wc[0,3], T_wc[1,3]))
                 # print(((tag_position[0]*0.266 + t_ca[2])/0.266, (tag_position[1]*0.266 + t_ca[0])/0.266))
-                # print(T_ac)
                 # print(T_ac)
 
                 if prev_tca is None or np.linalg.norm(np.array([t_ca[0], t_ca[1]])) < np.linalg.norm(np.array([prev_tca[0], prev_tca[1]])):
                     prev_tca = t_ca
                     closest_T_wc = T_wc #(T_wc[1,3], T_wc[0,3])
+                    closest_april_id = detection.tag_id
 
                 #break
             
-            # avg_pos = [0, 0]
+            if closest_T_wc is None:
+                continue
+
+            avg_pos = [0, 0]
             # for pe_i in pe_wc:
             #     for j in range(2):
             #         avg_pos[j] += (pe_i[j]/len(pe_wc))
             #         # optional: weight by |t_ca| proximity to 0 (close to middle of camera frame)
 
+            #print(closest_T_wc)
             avg_pos = (closest_T_wc[0,3], closest_T_wc[1,3])
             T_cw = np.linalg.inv(closest_T_wc)
             R_cw = np.array([[T_cw[0,0], T_cw[0,1], T_cw[0,2]],
@@ -141,11 +152,12 @@ if __name__ == '__main__':
                             [T_cw[2,0], T_cw[2,1], T_cw[2,2]]]) 
             
             avg_pos = np.array(avg_pos)
-            pd_w_t = np.array([y_spl(t/len(t_spl))*0.266, x_spl(t/len(t_spl))*0.266])
+            pd_w_t = np.array([x_spl(t/len(t_spl))*0.266, y_spl(t/len(t_spl))*0.266])
 
             #print(f'BEFORE: \t curr_pos: {avg_pos} \t spl: {pd_w_t}')
 
             e_w = avg_pos - pd_w_t
+            # e_w = avg_pos - np.array([11.5*0.266, 4.5*0.266])
 
             if np.linalg.norm(e_w) < e_threshold:
                 t+=1.0
@@ -161,17 +173,19 @@ if __name__ == '__main__':
             # deriv = (e_w - prev_error) / dt
 
             velos = [0, 0]
-            velos[1] = -0.75*e_w[1] #+ -0.1*integral #+ 100.0*deriv
-            velos[0] = -5*e_w[0]
+            velos[0] = -1*e_w[0]
+            velos[1] = -1*e_w[1] #+ -0.1*integral #+ 100.0*deriv
 
-            print(f'BEFORE: \t curr_pos: {avg_pos} \t spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velos: {velos}')
+            #print(f'BEFORE: \t curr_pos: {avg_pos} \t spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velos: {velos}')
 
-            velos = np.matmul(R_cw, np.array([[velos[1]], [velos[0]], [0]]))
+            velos = np.matmul(R_cw, np.array([velos[0], velos[1], 0]).T)
             #print(R_cw)
             
-            print(f'AFTER : \t curr_pos: {avg_pos} \t spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velox: {-velos[0,0]} \t Veloy: {velos[1,0]}')
+            print(f'curr_pos: {avg_pos} \t from tag {closest_april_id} \t  spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velos: {velos}')
+            #print(f'AFTER : \t curr_pos: {avg_pos} \t spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velox: {velos[1]} \t Veloy: {-velos[0]}')
 
-            ep_chassis.drive_speed(x=-velos[0, 0], y=velos[1, 0], z=0, timeout=5)
+            ep_chassis.drive_speed(x=velos[2], y=velos[0], z=0, timeout=5)
+            #ep_chassis.drive_speed(x=-velos[1], y=velos[0], z=0, timeout=5)
 
             # prev_error = e_w
             # prev_t = curr_t
@@ -179,7 +193,7 @@ if __name__ == '__main__':
         else:
             ep_chassis.drive_speed(x=0, y=0, z=-15, timeout=5) # spin in place
 
-        draw_detections(img, detections)
+        draw_detections(img, detections, coords)
         cv2.imshow("img", img)
         if cv2.waitKey(1) == ord('q'):
             ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
