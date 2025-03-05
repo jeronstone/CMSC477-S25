@@ -5,7 +5,8 @@ from PIL import Image, ImageDraw
 from collections import deque
 import numpy as np
 
-NUM_SUBDIVISIONS = 4 # we will split each CSV grid square into 2*2 = 4 map tiles
+NUM_SUBDIVISIONS = 16 # how many squares we will split each CSV grid square into (e.g. value of 2 means each CSV value becomes 2*2=4 map tiles)
+OBSTACLE_BUFFER = 0.75 # how many grid spaces away we want to stay from obstacles
 
 def grid_to_array(x: float, y: float):
     return int(x*NUM_SUBDIVISIONS), int(y*NUM_SUBDIVISIONS)
@@ -120,69 +121,17 @@ class Map:
                             
                             # if this is an obstacle, set all neighbors to soft obstacles unless they have a higher priority type
                             if entry_square_value == MapSquareEnum.OBSTACLE.value:
-                                new_map_y = map_y - 1
-                                new_map_x = map_x - 1
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
-                                        
-                                new_map_y = map_y - 1
-                                new_map_x = map_x
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
-
-                                new_map_y = map_y - 1
-                                new_map_x = map_x + 1
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
-
-                                new_map_y = map_y
-                                new_map_x = map_x - 1
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
-
-                                new_map_y = map_y
-                                new_map_x = map_x + 1
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
-
-                                new_map_y = map_y + 1
-                                new_map_x = map_x - 1
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
-                                        
-                                new_map_y = map_y + 1
-                                new_map_x = map_x
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
-
-                                new_map_y = map_y + 1
-                                new_map_x = map_x + 1
-                                if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
-                                    if self.map[new_map_y, new_map_x] is None:
-                                        self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
-                                    elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
-                                        self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
+                                scaled_obstacle_buffer = int(OBSTACLE_BUFFER*NUM_SUBDIVISIONS) # what radius around an obstacle we declare as a soft obstacle
+                                for new_map_y in range(map_y - scaled_obstacle_buffer, map_y + scaled_obstacle_buffer + 1):
+                                    for new_map_x in range(map_x - scaled_obstacle_buffer, map_x + scaled_obstacle_buffer + 1):
+                                        if new_map_y == map_y and new_map_x == map_x: # ignore current square
+                                            continue
+                                        if new_map_y >= 0 and new_map_y < self.map_num_rows and new_map_x >= 0 and new_map_x < self.map_num_cols:
+                                            if self.map[new_map_y, new_map_x] is None:
+                                                self.map[new_map_y, new_map_x] = MapSquare(square_type=MapSquareEnum.OBSTACLE_SOFT)
+                                            elif self.map[new_map_y, new_map_x].square_type.value < MapSquareEnum.OBSTACLE_SOFT.value:
+                                                self.map[new_map_y, new_map_x].square_type = MapSquareEnum.OBSTACLE_SOFT
+                                
 
                     i += NUM_SUBDIVISIONS
                 j += NUM_SUBDIVISIONS
