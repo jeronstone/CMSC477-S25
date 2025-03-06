@@ -172,6 +172,7 @@ def solve_maze(show=False):
         plt.grid('True')
         ax.plot(x_spl(t_spl), y_spl(t_spl))
         # ax[1].plot(x_spl(t), y_spl(t))
+        plt.gca().set_aspect('equal')
         plt.show()
         map1.gen_img(scale=20).show()
     

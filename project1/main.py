@@ -16,23 +16,23 @@ april_right = np.array([[0,0,-1],[-1,0,0],[0,1,0]]) #np.array([[-1,0,0],[0,0,-1]
 april_up    = np.array([[-1,0,0],[0,0,1],[0,1,0]]) #np.array([[0,0,1],[0,1,0],[-1,0,0]])   # 90deg y rotation
 april_down  = np.array([[1,0,0],[0,0,-1],[0,1,0]]) #np.array([[0,0,-1],[1,0,0],[0,-1,0]])  # -90deg y rotation, 180deg z rotation
 april_to_coords = {
-    30: (3.0,   2.5, april_left),
-    31: (4.0,   2.5, april_right),
-    32: (3.0,   4.5, april_left),
-    33: (4.0,   4.5, april_right),
-    34: (3.5,   6.0, april_down),  
-    35: (5.5,   2.0, april_down),
-    36: (7.5,   2.0, april_down),    
-    37: (6.5,   5.0, april_up),  
-    38: (6.0,   6.5, april_left),
-    39: (7.0,   6.5, april_right),
-    40: (6.0,   8.5, april_left),
-    41: (7.0,   8.5, april_right),
-    42: (9.0,   2.5, april_left),
-    43: (10.0,  2.5, april_right),
-    44: (9.0,   4.5, april_left),
-    45: (10.0,  4.5, april_right),
-    46: (9.5,   6.0, april_down)
+    30: (4.0,   1.5, april_left),
+    31: (5.0,   1.5, april_right),
+    32: (4.0,   3.5, april_left),
+    33: (5.0,   3.5, april_right),
+    34: (4.5,   5.0, april_down),  
+    35: (6.5,   1.0, april_down),
+    36: (8.5,   1.0, april_down),    
+    37: (7.5,   4.0, april_up),  
+    38: (7.0,   5.5, april_left),
+    39: (8.0,   5.5, april_right),
+    40: (7.0,   7.5, april_left),
+    41: (8.0,   7.5, april_right),
+    42: (10.0,  1.5, april_left),
+    43: (11.0,  1.5, april_right),
+    44: (10.0,  3.5, april_left),
+    45: (11.0,  3.5, april_right),
+    46: (10.5,  5.0, april_down)
 }
 
 def draw_detections(frame, detections, coords=None):
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     coords = {}
 
     # use initial apriltag to find current position in world frame
-    initial_tag = 43
+    initial_tag = 32
 
     while True:
         try:
