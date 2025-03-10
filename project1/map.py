@@ -6,7 +6,7 @@ from collections import deque
 import numpy as np
 
 NUM_SUBDIVISIONS = 16 # how many squares we will split each CSV grid square into (e.g. value of 2 means each CSV value becomes 2*2=4 map tiles)
-OBSTACLE_BUFFER = 0.75 # how many grid spaces away we want to stay from obstacles
+OBSTACLE_BUFFER = 0.9 # how many grid spaces away we want to stay from obstacles
 
 def grid_to_array(x: float, y: float):
     return int(x*NUM_SUBDIVISIONS), int(y*NUM_SUBDIVISIONS)

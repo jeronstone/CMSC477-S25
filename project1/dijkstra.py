@@ -148,7 +148,7 @@ def Dijkstra(map, gen_frames, frames, scale=1):
             anim_count = 0
 
 def solve_maze(show=False):
-    map1 = Map(os.getcwd() + "/Project1.csv")
+    map1 = Map(os.getcwd() + "\Project1.csv")
     Dijkstra(map1, False, [], scale=10)
     path = map1.draw_path()
     x_pts = []
@@ -158,7 +158,7 @@ def solve_maze(show=False):
         x_pts.append(scaled_x)
         y_pts.append(scaled_y)
     t = np.linspace(0, 1, num=len(path))
-    t_spl = np.linspace(0, 1, num=100)
+    t_spl = np.linspace(0, 1, num=800)
     x_spl = CubicSpline(t, x_pts)
     y_spl = CubicSpline(t, y_pts)
     
@@ -177,6 +177,22 @@ def solve_maze(show=False):
         map1.gen_img(scale=20).show()
     
     return t_spl, x_spl, y_spl
+
+def show_travel(t_spl, x_spl, y_spl, x_trav, y_trav):
+    map1 = Map(os.getcwd() + "\Project1.csv")
+    fig, ax = plt.subplots(1, 1)
+    ax.xaxis.set_ticks_position('top')
+    ax.set_xlim([0, map1.map_num_cols//NUM_SUBDIVISIONS])
+    ax.set_ylim([map1.map_num_rows//NUM_SUBDIVISIONS, 0])
+    plt.xticks(np.arange(0, map1.map_num_cols//NUM_SUBDIVISIONS, 1))
+    plt.yticks(np.arange(0, map1.map_num_rows//NUM_SUBDIVISIONS, 1))
+    plt.grid('True')
+    ax.plot(x_spl(t_spl), y_spl(t_spl))
+    ax.plot([x/0.2666 for x in x_trav], [y/0.2666 for y in y_trav])
+    # ax[1].plot(x_spl(t), y_spl(t))
+    plt.gca().set_aspect('equal')
+    plt.show()
+    map1.gen_img(scale=20).show()
 
 if __name__ == '__main__':
     solve_maze(show=True)
