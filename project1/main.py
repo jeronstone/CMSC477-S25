@@ -14,7 +14,7 @@ from scipy.linalg import block_diag
 from filterpy.common import Q_discrete_white_noise
 
 APRILTAG_SIZE = 0.2666
-USE_IBVS = False
+USE_IBVS = True
 
 april_left  = np.array([[0,0,1],[1,0,0],[0,1,0]]) #np.array([[1,0,0],[0,0,1],[0,-1,0]])   # -90deg x rotation
 april_right = np.array([[0,0,-1],[-1,0,0],[0,1,0]]) #np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # -90deg x rotation, 180deg z rotation
@@ -245,7 +245,7 @@ if __name__ == '__main__':
 
                 # print(f'{res}')
 
-                lam = np.matrix([[0.5, 0.0], [0.0, 0.75]])
+                lam = np.matrix([[1.25, 0.0], [0.0, 1.75]])
 
                 x = closest_tca[0] / closest_tca[2]
                 y = closest_tca[1] / closest_tca[2]
