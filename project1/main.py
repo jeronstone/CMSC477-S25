@@ -14,7 +14,7 @@ from scipy.linalg import block_diag
 from filterpy.common import Q_discrete_white_noise
 
 APRILTAG_SIZE = 0.2666
-USE_IBVS = True
+USE_IBVS = False
 
 april_left  = np.array([[0,0,1],[1,0,0],[0,1,0]]) #np.array([[1,0,0],[0,0,1],[0,-1,0]])   # -90deg x rotation
 april_right = np.array([[0,0,-1],[-1,0,0],[0,1,0]]) #np.array([[-1,0,0],[0,0,-1],[0,-1,0]]) # -90deg x rotation, 180deg z rotation
@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     first_detect = 0
     prev_t = time.time()
-    dt = 0.1
+    dt = 0.01
     prev_error = np.array([0.0, 0.0])
     integral = np.array([0.0, 0.0])
     closest_april_id = -1
@@ -95,23 +95,24 @@ if __name__ == '__main__':
     f = open('traveled_path2.csv','w')
     writer = csv.writer(f)
 
+    f2 = open('vels.csv', 'w')
+    vels_writer = csv.writer(f2)
+
     # initialize filter
-    # position_filter = KalmanFilter(dim_x = 4, dim_z = 2)
-    # position_filter.F = np.array([[1, 0, 0, 0],
-    #                               [0, 0, 0, 0],
-    #                               [0, 0, 1, 0],
-    #                               [0, 0, 0, 0]])
-    # q = Q_discrete_white_noise(dim=2, dt=dt, var=0.001)
-    # position_filter.Q = block_diag(q, q)
-    # position_filter.H = np.array([[1, 0, 0, 0],
-    #                               [0, 0, 1, 0]])
-    # position_filter.R = np.array([[1, 0],
-    #                               [0, 1]])
-    # position_filter.x = np.array([[x_spl(0), 0, y_spl(0), 0]]).T
-    # position_filter.P = np.eye(4) * 5
-    # position_filter.B = np.array([[dt, 0], [1, 0], [0, dt], [0, 1]])
-    # position_filter.update((x_spl(3.0/800), y_spl(3.0/800)))
-    # print(f'update: {position_filter.x}')
+    position_filter = KalmanFilter(dim_x = 4, dim_z = 2)
+    position_filter.F = np.array([[1, 0, 0, 0],
+                                [0, 0, 0, 0],
+                                [0, 0, 1, 0],
+                                [0, 0, 0, 0]])
+    q = Q_discrete_white_noise(dim=2, dt=dt, var=1)
+    position_filter.Q = block_diag(q, q)
+    position_filter.H = np.array([[1, 0, 0, 0],
+                                [0, 0, 1, 0]])
+    position_filter.R = np.array([[0.00001, 0],
+                                [0, 0.00001]])
+    position_filter.x = np.array([[x_spl(0)*0.2666, 0, y_spl(0)*0.2666, 0]]).T
+    position_filter.P = np.eye(4) * 0.1
+    position_filter.B = np.array([[dt, 0], [1, 0], [0, dt], [0, 1]])
     
     while True:
         try:
@@ -122,6 +123,12 @@ if __name__ == '__main__':
 
         curr_t = time.time()
         dt = curr_t - prev_t
+        #position_filter.F = np.array([[1, dt, 0, 0],
+                                    # [0, 1, 0, 0],
+                                    # [0, 0, 1, dt],
+                                    # [0, 0, 0, 1]])
+
+        #position_filter.B = np.array([[dt, 0], [1, 0], [0, dt], [0, 1]])
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray.astype(np.uint8)
@@ -199,10 +206,10 @@ if __name__ == '__main__':
             #                               [0,  0, 0,  1]])
             # if prev_velos is not None:
             #     position_filter.predict(u=prev_velos)
-            # position_filter.update(avg_pos)
-            # avg_pos = np.array((position_filter.x[0,0], position_filter.x[2,0]))
+            position_filter.update(avg_pos)
+            avg_pos = np.array((position_filter.x[0,0], position_filter.x[2,0]))
             
-            avg_pos = np.array(avg_pos)
+            # avg_pos = np.array(avg_pos)
             pd_w_t = np.array([x_spl(t/len(t_spl))*0.266, y_spl(t/len(t_spl))*0.266])
 
             #print(f'BEFORE: \t curr_pos: {avg_pos} \t spl: {pd_w_t}')
@@ -245,7 +252,7 @@ if __name__ == '__main__':
 
                 # print(f'{res}')
 
-                lam = np.matrix([[1.25, 0.0], [0.0, 1.75]])
+                lam = np.matrix([[1.0, 0.0], [0.0, 1.5]])
 
                 x = closest_tca[0] / closest_tca[2]
                 y = closest_tca[1] / closest_tca[2]
@@ -257,6 +264,8 @@ if __name__ == '__main__':
 
                 res = lam @ Lx.I @ np.array([[float(e_b[0])], [float(e_b[1])]])
                 print(f'{res}')
+
+                
 
                 # x = closest_tca[0] / closest_tca[2]
                 # y = closest_tca[1] / closest_tca[2]
@@ -272,6 +281,9 @@ if __name__ == '__main__':
                 #print(f'{res.item(1)} \t {res.item(0)}')
 
                 velos = [res.item(0), res.item(1)]
+                velos_w = np.linalg.inv(R_cw) @ np.linalg.inv(R_bc) @ np.array([[velos[0], velos[1], 0]]).T
+                # print(velos_w)
+                position_filter.predict(u=(velos_w[0], velos_w[1]))
                 #velos = [0,0,0]
                 #print(f'curr_pos: {avg_pos} \t from tag {closest_april_id} \t  spl: {pd_w_t} \t t: {t} Velos: {velos}')
 
@@ -280,6 +292,7 @@ if __name__ == '__main__':
                 velos = [0, 0]
                 velos[0] = -1.0*e_w[0] -0.1*integral[0] -0.5*deriv[0]
                 velos[1] = -1.0*e_w[1] -0.1*integral[1] -0.5*deriv[1]
+                position_filter.predict(u=velos)
 
                 velos = np.matmul(R_cw, np.array([velos[0], velos[1], 0]).T)
                 print(f'curr_pos: {avg_pos} \t from tag {closest_april_id} scored {round(minscore, 2)} \t deriv: {deriv} \t  spl: {pd_w_t} \t t: {t} \t Err: {e_w} \t Velos: {velos}')
