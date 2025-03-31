@@ -6,3 +6,7 @@ numpy
 scipy
 matplotlib
 filterpy
+ultralytics
+torch 
+torchvision 
+torchaudio --index-url https://download.pytorch.org/whl/cu118
