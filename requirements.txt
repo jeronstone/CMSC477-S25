@@ -5,6 +5,7 @@ pillow
 numpy
 scipy
 matplotlib
+filterpy
 ultralytics
 torch 
 torchvision 
