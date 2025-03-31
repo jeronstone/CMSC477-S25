@@ -1,3 +1,5 @@
 venv/
 yolov8s.pt
 yolo11n.pt
+train_images/old
+p2_ml/cmsc477_yolo/datasets
