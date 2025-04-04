@@ -146,7 +146,7 @@ while True:
                         
                 # print(corners)
                 
-                depth =(0.158*314.0)/(int(xyxy[3])-int(xyxy[1]))
+                depth =(0.1*314.0)/(int(xyxy[3])-int(xyxy[1])) # actual block length is 0.158 meters; however, in the worst case, we will only see around 0.1 meters of the block, so use that as the depth. this means we underestimate the depth at every iteration
                 
                 controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
                 controller.calculate_interaction_matrix()
