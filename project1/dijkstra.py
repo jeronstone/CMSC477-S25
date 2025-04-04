@@ -196,3 +196,7 @@ def show_travel(t_spl, x_spl, y_spl, x_trav, y_trav):
 
 if __name__ == '__main__':
     solve_maze(show=True)
+    # map1 = Map(os.getcwd() + "\Project1.csv")
+    # Dijkstra(map1, False, [], scale=10)
+    # path = map1.draw_path()
+    # map1.gen_img(scale=20).show()
