@@ -2,7 +2,7 @@ from ultralytics import YOLO
 import cv2
 
 print('model')
-model = YOLO(r"..\runs\detect\train5\weights\best.pt")
+model = YOLO(r"..\runs\detect\train\weights\best.pt")
 
 frame = cv2.imread(r"train_images\old\block_in_frame_37.png") # 0; 37; 
 

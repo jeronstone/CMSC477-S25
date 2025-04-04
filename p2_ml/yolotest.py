@@ -38,7 +38,7 @@ def sub_data_handler(sub_info):
     # print("Robotic Arm: pos x:{0}, pos y:{1}".format(pos_x, pos_y))
 
 print('model')
-model = YOLO(r"..\runs\detect\train5\weights\best.pt")
+model = YOLO(r"..\runs\detect\train\weights\best.pt")
 
 # Use vid instead of ep_camera to use your laptop's webcam
 # vid = cv2.VideoCapture(0)
