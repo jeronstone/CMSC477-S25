@@ -53,14 +53,15 @@ class State(Enum):
     GRIP_PICKUP = 3,
     MOVE_EMPTY_1 = 4,
     GRIP_DROP = 5,
-    MOVE_BLOCK_ON_TARGET_2 = 6,
+    MOVE_BLOCK_ON_TARGET_2 = 6, # could this just be 1 state?
     #pickup
     MOVE_TARGET_1 = 7,
     # drop
-    # move empty
+    MOVE_EMPTY_1_BLOCK = 8,
     # pickup
-    MOVE_TARGET_2 = 8
+    MOVE_TARGET_2 = 9,
     # drop
+    FINISHED = 10
 
 ep_robot = robot.Robot()
 ep_robot.initialize(conn_type="sta", sn="3JKCH8800100YR")
@@ -68,15 +69,14 @@ ep_chassis = ep_robot.chassis
 ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
 ep_camera = ep_robot.camera
 ep_camera.start_video_stream(display=False, resolution=camera.STREAM_360P)
-#ep_arm = ep_robot.robotic_arm
-#ep_arm.moveto(x=200, y=0).wait_for_completed()
+ep_arm = ep_robot.robotic_arm
 ep_gripper = ep_robot.gripper
 
 # Start printing the gripper position
-# ep_arm.sub_position(freq=5, callback=sub_data_handler)
+ep_arm.sub_position(freq=5, callback=sub_data_handler)
 
 controller = IBVS_Controller(control_mode='4xyzy', interaction_mode='mean', num_pts=4)
-controller.set_lambda_matrix([5.0, 10.0, 1.0, 1000.0]) # robot y velocity; robot z velocity; robot x velocity; robot z angular velocity
+controller.set_lambda_matrix([5.0, 50.0, 1.0, 1000.0]) # robot y velocity; robot z velocity; robot x velocity; robot z angular velocity
 controller.set_desired_points([(-0.16, 0.125, 0.215), (0.16, 0.125, 0.215), (-0.16, 0.95, 0.215), (0.16, 0.95, 0.215)])
 
 state = State.START_2B_2M
@@ -98,12 +98,17 @@ while True:
         
         boxes = result.boxes
         if len(boxes) == 0:
-            # ep_chassis.drive_speed(x=0, y=0, z=-10, timeout=5)
-            pass
+            ep_chassis.drive_speed(x=0, y=0, z=-10, timeout=5)
         else:
             for box in boxes:
-                if int(box.cls) != 0:
-                    continue
+                # if moving towards block, detect only blocks
+                if (state == State.MOVE_BLOCK_ON_TARGET_1 or state == State.MOVE_BLOCK_ON_TARGET_2 or state == State.MOVE_EMPTY_1_BLOCK):
+                    if int(box.cls) != 0:
+                        continue
+                # if moving towards target, detect only targets
+                elif (state == State.MOVE_TARGET_1 or state == State.MOVE_TARGET_2):
+                    if int(box.cls) != 1:
+                        continue
                 xyxy = box.xyxy.cpu().numpy().flatten()
                 cv2.rectangle(frame,
                             (int(xyxy[0]), int(xyxy[1])), 
@@ -128,12 +133,15 @@ while True:
                 detected_block_lines = cv2.Canny(detected_block_gray_gaussian, 100, 250, None, 3)
 
                 # detected_block_lines_hough = cv2.HoughLines(detected_block_lines, 1, np.pi / 180, 30, None, 0, 0)
-                detected_block_lines_hough = cv2.HoughLinesP(detected_block_lines, 1, np.pi / 180, 25, None, 15, 1)
+                detected_block_lines_hough = cv2.HoughLinesP(detected_block_lines, 1, np.pi / 180, 35, None, 15, 1)
                 # print(detected_block_lines_hough) 
                 
             
             if state == State.START_2B_2M:
                 print("Start")
+                
+                # move arm to start pos
+                ep_arm.moveto(x=200, y=0).wait_for_completed()
                 
                 # open gripper
                 ep_gripper.open(power=100)
@@ -146,7 +154,7 @@ while True:
                         
                 # print(corners)
                 
-                depth =(0.158*314.0)/(int(xyxy[3])-int(xyxy[1]))
+                depth = (0.1*314.0)/(int(xyxy[3])-int(xyxy[1]))
                 
                 controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
                 controller.calculate_interaction_matrix()
@@ -204,18 +212,18 @@ while True:
                     most_horizontal_angle = 0
 
                 # send robot z position to arm
-                #ep_arm.moveto(x=200, y=robot_z_position).wait_for_completed()
+                ep_arm.moveto(x=200, y=robot_z_position).wait_for_completed()
 
                 # send robot x, y, and angular z velocities to robot
                 #ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=robot_z_angular_velocity, timeout=5)
-                #ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=10.0*most_horizontal_angle, timeout=5)
+                ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=30.0*most_horizontal_angle, timeout=5)
 
                 
                 controller.calculate_error_vector()
                 err_nrm = np.linalg.norm(controller.errs)
-                #if depth < 0.22:
-                #    state = State.GRIP_PICKUP
-                #    prev = State.MOVE_BLOCK_ON_TARGET_1
+                if depth < 0.225 and err_nrm < 0.125:
+                   state = State.GRIP_PICKUP
+                   prev = State.MOVE_BLOCK_ON_TARGET_1
 
                 print(f"depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
                         
@@ -223,26 +231,58 @@ while True:
                 
                 
                 ep_gripper.close(power=150)
-                time.sleep(0.5)
+                time.sleep(1.0)
                 ep_gripper.pause()
                 
                 ep_arm.move(x=0, y=30).wait_for_completed()
                 
-                state = State.MOVE_EMPTY_1
+                if (prev == State.MOVE_BLOCK_ON_TARGET_1):
+                    state = State.MOVE_EMPTY_1
+                elif (prev == State.MOVE_BLOCK_ON_TARGET_2):
+                    state = State.MOVE_EMPTY_1_BLOCK
+                elif (prev == State.MOVE_EMPTY_1_BLOCK):
+                    state = State.MOVE_TARGET_2 
                 prev = State.GRIP_PICKUP
                 
             elif state == State.MOVE_EMPTY_1:
             
+                # move back 1 meter (?)
+                ep_chassis.move(x=-1.0, y=0, z=0, xy_speed=0.7).wait_for_completed()
+                
+                state = State.GRIP_DROP
+                prev = State.MOVE_EMPTY_1
                 
                 print("State is MOVE_EMPTY_1")
             elif state == State.GRIP_DROP:
+                
+                # move arm to start pos
+                ep_arm.moveto(x=200, y=0).wait_for_completed()
+                
+                ep_gripper.open(power=150)
+                time.sleep(1.0)
+                ep_gripper.pause()
+                
+                if (prev == State.MOVE_EMPTY_1):
+                    state = State.MOVE_BLOCK_ON_TARGET_2
+                elif (prev == State.MOVE_TARGET_1):
+                    state = State.MOVE_EMPTY_1_BLOCK
+                elif (prev == State.MOVE_TARGET_2):
+                    state = State.FINISHED
+                prev = State.GRIP_DROP
+                
                 print("State is GRIP_DROP")
             elif state == State.MOVE_BLOCK_ON_TARGET_2:
                 print("State is MOVE_BLOCK_ON_TARGET_2")
+                time.sleep(1.0)
             elif state == State.MOVE_TARGET_1:
                 print("State is MOVE_TARGET_1")
+            elif state == State.MOVE_EMPTY_1_BLOCK:
+                print("State is MOVE_EMPTY_1_BLOCK")
             elif state == State.MOVE_TARGET_2:
                 print("State is MOVE_TARGET_2")
+            elif state == State.FINISHED:
+                print("FINISHED!")
+                time.sleep(1.0)
             else:
                 print("Unknown state")
 
