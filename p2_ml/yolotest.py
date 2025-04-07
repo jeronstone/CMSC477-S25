@@ -4,6 +4,9 @@ import time
 from robomaster import robot
 from robomaster import camera
 from ibvs_controller import *
+from scipy.spatial import ConvexHull, convex_hull_plot_2d
+import matplotlib.pyplot as plt
+import sys 
 
 ROBOT_X_VELOCITY_MIN = -0.1
 ROBOT_X_VELOCITY_MAX = 0.1
@@ -38,7 +41,7 @@ def sub_data_handler(sub_info):
     # print("Robotic Arm: pos x:{0}, pos y:{1}".format(pos_x, pos_y))
 
 print('model')
-model = YOLO(r"..\runs\detect\train\weights\best.pt")
+model = YOLO(r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\runs\segment\train2\weights\best.pt")
 
 # Use vid instead of ep_camera to use your laptop's webcam
 # vid = cv2.VideoCapture(0)
@@ -72,11 +75,51 @@ while True:
         start = time.time()
         if model.predictor:
             model.predictor.args.verbose = False
-        result = model.predict(source=frame, show=False)[0]
-        names = model.names
+            
+        #print('before')
+        result = model.predict(source=frame, show=False)
+        #print('after')
+        
+        #print(result)
+                
+        for r in result:
+            for b in r.boxes:
+                if int(b.cls) != 1:
+                    continue
+                xy = r.masks.xy  # mask in polygon format
+                xyn = r.masks.xyn  # normalized
+                masks = r.masks.data  # mask in matrix format (num_objects x H x W)
+                
+                if len(masks.numpy()) < 2:
+                    continue
+                
+                msk = masks.numpy()[1]
+                mask = np.uint8(msk)
+                        
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                epsilon = 0.02 * cv2.arcLength(contours[0], True)  # epsilon controls the approximation accuracy
+                approx = cv2.approxPolyDP(contours[0], epsilon, True)
+                
+                for corner in approx:
+                    cv2.circle(frame, tuple(corner[0]), 5, (0, 255, 0), -1)
+
+                for point in xy[1]:
+                    x, y = point.astype(int)
+                    cv2.circle(frame, (x, y), radius=5, color=(0, 0, 255), thickness=-1)  # Red dot
+                continue
+                points = xy[1]
+                hull = ConvexHull(points)
+                plt.plot(points[:,0], points[:,1], 'o')
+                for simplex in hull.simplices:
+                    plt.plot(points[simplex, 0], points[simplex, 1], 'k-')
+                plt.show()
+        #names = model.names
 
         # DIY visualization is much faster than show=True for some reason
-        boxes = result.boxes
+        #boxes = result.boxes
+        cv2.imshow('frame', frame)
+        cv2.waitKey(1)  # Small wait so the window updates
+        continue
         if len(boxes) == 0:
             # ep_chassis.drive_speed(x=0, y=0, z=-10, timeout=5)
             pass

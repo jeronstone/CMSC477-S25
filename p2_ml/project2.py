@@ -77,7 +77,7 @@ ep_arm.sub_position(freq=5, callback=sub_data_handler)
 
 controller = IBVS_Controller(control_mode='4xyzy', interaction_mode='mean', num_pts=4)
 controller.set_lambda_matrix([5.0, 50.0, 1.0, 1000.0]) # robot y velocity; robot z velocity; robot x velocity; robot z angular velocity
-controller.set_desired_points([(-0.16, 0.125, 0.215), (0.16, 0.125, 0.215), (-0.16, 0.95, 0.215), (0.16, 0.95, 0.215)])
+controller.set_desired_points([(-0.18, 0.05, 0.18), (0.18, 0.05, 0.18), (-0.18, 0.99, 0.18), (0.18, 0.99, 0.18)])
 
 state = State.START_2B_2M
 prev = State.START_2B_2M
@@ -144,7 +144,7 @@ while True:
                 ep_arm.moveto(x=200, y=0).wait_for_completed()
                 
                 # open gripper
-                ep_gripper.open(power=100)
+                ep_gripper.open(power=150)
                 time.sleep(2)
                 ep_gripper.pause()
                 
@@ -179,7 +179,7 @@ while True:
                 # robot z angular velocity is camera y angular velocity
                 robot_z_angular_velocity = vels[3][0]
                 robot_z_angular_velocity = clamp(robot_z_angular_velocity, ROBOT_Z_ANGULAR_VELOCITY_MIN, ROBOT_Z_ANGULAR_VELOCITY_MAX)
-                
+                                
                 if detected_block_lines_hough is not None:
                     most_vertical = detected_block_lines_hough[0][0]
                     most_horizontal = detected_block_lines_hough[0][0]
@@ -200,6 +200,8 @@ while True:
                             most_horizontal = l
                     # cv2.line(detected_block, (most_vertical[0], most_vertical[1]), (most_vertical[2], most_vertical[3]), (0,0,0), 3, cv2.LINE_AA)
                     cv2.line(detected_block, (most_horizontal[0], most_horizontal[1]), (most_horizontal[2], most_horizontal[3]), (255,255,255), 3, cv2.LINE_AA)
+                    cv2.imshow('detected_block', detected_block)
+                    key = cv2.waitKey(1)
 
                     if most_horizontal is not most_vertical:
                         # most_vertical_angle = math.atan2(most_vertical[3] - most_vertical[1], most_vertical[2] - most_vertical[0])
@@ -216,16 +218,15 @@ while True:
 
                 # send robot x, y, and angular z velocities to robot
                 #ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=robot_z_angular_velocity, timeout=5)
-                ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=30.0*most_horizontal_angle, timeout=5)
-
+                ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=5.0*most_horizontal_angle, timeout=5)
                 
                 controller.calculate_error_vector()
                 err_nrm = np.linalg.norm(controller.errs)
-                if depth < 0.225 and err_nrm < 0.125:
+                if depth < 0.19 and err_nrm < 0.125 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
                    state = State.GRIP_PICKUP
                    prev = State.MOVE_BLOCK_ON_TARGET_1
 
-                print(f"depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
+                print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
                         
             elif state == State.GRIP_PICKUP:
                 
