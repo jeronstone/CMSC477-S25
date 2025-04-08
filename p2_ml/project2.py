@@ -42,8 +42,7 @@ ERR_THRESH = 0.125
 
 robot_z_position = 0 # keeps track of arm position
 
-model = YOLO(r"..\runs\detect\train\weights\best.pt")
-
+model = YOLO(r"..\runs_v2\detect\train2\weights\best.pt")
 # Use vid instead of ep_camera to use your laptop's webcam
 # vid = cv2.VideoCapture(0)
 
@@ -200,8 +199,8 @@ while True:
                             most_horizontal = l
                     # cv2.line(detected_block, (most_vertical[0], most_vertical[1]), (most_vertical[2], most_vertical[3]), (0,0,0), 3, cv2.LINE_AA)
                     cv2.line(detected_block, (most_horizontal[0], most_horizontal[1]), (most_horizontal[2], most_horizontal[3]), (255,255,255), 3, cv2.LINE_AA)
-                    cv2.imshow('detected_block', detected_block)
-                    key = cv2.waitKey(1)
+                    #cv2.imshow('detected_block', detected_block)
+                    #key = cv2.waitKey(1)
 
                     if most_horizontal is not most_vertical:
                         # most_vertical_angle = math.atan2(most_vertical[3] - most_vertical[1], most_vertical[2] - most_vertical[0])
@@ -222,16 +221,17 @@ while True:
                 
                 controller.calculate_error_vector()
                 err_nrm = np.linalg.norm(controller.errs)
-                if depth < 0.19 and err_nrm < 0.125 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
+                #if depth < 0.19 and err_nrm < 0.125 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
+                if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
                    state = State.GRIP_PICKUP
                    prev = State.MOVE_BLOCK_ON_TARGET_1
 
-                print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
+                #print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
                         
             elif state == State.GRIP_PICKUP:
                 
                 
-                ep_gripper.close(power=150)
+                ep_gripper.close(power=100)
                 time.sleep(1.0)
                 ep_gripper.pause()
                 
@@ -253,13 +253,12 @@ while True:
                 state = State.GRIP_DROP
                 prev = State.MOVE_EMPTY_1
                 
-                print("State is MOVE_EMPTY_1")
             elif state == State.GRIP_DROP:
                 
                 # move arm to start pos
-                ep_arm.moveto(x=200, y=0).wait_for_completed()
+                ep_arm.move(x=0, y=-25).wait_for_completed()
                 
-                ep_gripper.open(power=150)
+                ep_gripper.open(power=50)
                 time.sleep(1.0)
                 ep_gripper.pause()
                 
@@ -274,7 +273,7 @@ while True:
                 print("State is GRIP_DROP")
             elif state == State.MOVE_BLOCK_ON_TARGET_2:
                 print("State is MOVE_BLOCK_ON_TARGET_2")
-                time.sleep(1.0)
+                #time.sleep(1.0)
             elif state == State.MOVE_TARGET_1:
                 print("State is MOVE_TARGET_1")
             elif state == State.MOVE_EMPTY_1_BLOCK:
@@ -283,7 +282,7 @@ while True:
                 print("State is MOVE_TARGET_2")
             elif state == State.FINISHED:
                 print("FINISHED!")
-                time.sleep(1.0)
+                #time.sleep(1.0)
             else:
                 print("Unknown state")
 

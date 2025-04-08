@@ -2,11 +2,11 @@ import cv2
 from robomaster import robot
 from robomaster import camera
 
-i=0
+i=76
 
 def save_image(image, filename="block"):
     global i
-    cv2.imwrite(f'train_images_v2/{filename}_{i}.png', image)
+    cv2.imwrite(f'train_images_v3/{filename}_{i}.png', image)
     i+=1
     print(f"Image saved")
 
