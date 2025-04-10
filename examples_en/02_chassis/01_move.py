@@ -19,7 +19,7 @@ from robomaster import robot
 
 if __name__ == '__main__':
     ep_robot = robot.Robot()
-    ep_robot.initialize(conn_type="sta")
+    ep_robot.initialize(conn_type="sta", sn="3JKCH7T001008H")
 
     ep_chassis = ep_robot.chassis
 
