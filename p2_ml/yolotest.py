@@ -57,8 +57,12 @@ ep_camera.start_video_stream(display=False, resolution=camera.STREAM_360P)
 ep_arm = ep_robot.robotic_arm
 ep_gripper = ep_robot.gripper
 
+ep_gripper.open(power=100)
+time.sleep(2.0)
+ep_gripper.pause()
+
 ep_gripper.close(power=100)
-time.sleep(1.0)
+time.sleep(2.0)
 ep_gripper.pause()
 ep_arm.moveto(x=200, y=50).wait_for_completed()
 
