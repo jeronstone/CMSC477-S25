@@ -178,6 +178,8 @@ def grip_drop():
     print('DROP DONE')
 
 def state_start():
+    global state
+    global first
     print("Start")
         
     # open gripper
@@ -191,6 +193,8 @@ def state_start():
     state = State.MOVE_BLOCK_ON_TARGET_1
 
 def state_find_block():
+    global state
+    global first
     print("State is {state}")
         
     controller.set_desired_points([(-0.2, -0.7, 0.18), (0.2, -0.7, 0.18), (-0.2, 1.0, 0.18), (0.2, 1.0, 0.18)])
@@ -323,6 +327,8 @@ def state_find_block():
         rage_quit()
 
 def state_find_target():
+    global state
+    global first
     print("State is {state}")
 
     if state == State.MOVE_TARGET_1:
@@ -397,21 +403,7 @@ def state_find_target():
             
             grip_drop()
             
-            if (state == State.MOVE_EMPTY_1):
-            
-                ep_chassis.move(x=-0.1, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0) # move slightly backward, then sideways
-                time.sleep(2.0)
-
-                ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(5.0)
-                time.sleep(5.0)
-                
-                ep_chassis.move(x=0, y=0.75, z=0, xy_speed=1.0).wait_for_completed(2.0)
-                time.sleep(2.0)
-                
-                first = 0
-                
-                state = State.MOVE_BLOCK_ON_TARGET_2
-            elif (state == State.MOVE_TARGET_1):
+            if (state == State.MOVE_TARGET_1):
                 
                 ep_chassis.move(x=-0.1, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0) # move slightly backward, then sideways
                 time.sleep(2.0)
@@ -436,6 +428,8 @@ def state_find_target():
         rage_quit()
 
 def state_move_block_to_empty_loc():
+    global state
+    global first
     print('MOVE EMPTY')
 
     time.sleep(1.0)
@@ -448,8 +442,19 @@ def state_move_block_to_empty_loc():
     
     print('DONE MOVEMENT')
     
-    state = State.GRIP_DROP
-    prev = State.MOVE_EMPTY_1
+    grip_drop()
+    
+    ep_chassis.move(x=-0.1, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0) # move slightly backward, then sideways
+    time.sleep(2.0)
+
+    ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(5.0)
+    time.sleep(5.0)
+    
+    ep_chassis.move(x=0, y=0.75, z=0, xy_speed=1.0).wait_for_completed(2.0)
+    time.sleep(2.0)
+    
+    first = 0
+    state = State.MOVE_BLOCK_ON_TARGET_2
 
 def state_finished():
     print("FINISHED!")
