@@ -84,7 +84,16 @@ first = 0
 def rage_quit():
     cv2.destroyAllWindows()
     ep_camera.stop_video_stream()
+    
+    ep_gripper.open(power=150)
+    time.sleep(1.0)
+    ep_gripper.pause()
+
+    ep_arm.moveto(x=200, y=-50).wait_for_completed()
+    time.sleep(1.0)
+
     ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+    
     ep_robot.close()
     exit(0)
 
@@ -142,6 +151,27 @@ def get_yolo_pred(frame, blocks=True, targets=True, clean_frame=None):
                 detections.append((corners, None, -1))
             
     return frame, detections
+
+def turn_to_detect_block(speed):
+    try:
+        frame = ep_camera.read_cv2_image(strategy="newest")
+    except:
+        frame = None
+        return -1
+    
+    while True:
+        frame, detections = get_yolo_pred(frame, blocks=True, targets=False)
+        
+        if len(detections) == 0:
+            ep_chassis.drive_speed(x=0, y=0, z=speed, timeout=5)
+            
+            cv2.imshow('frame', frame)
+            key = cv2.waitKey(1)
+            if key == ord('q'):
+                rage_quit()
+        else:
+            cv2.destroyAllWindows()
+            return 1
     
 def grip_pickup():
     print('PICKUP')
@@ -454,7 +484,13 @@ def state_move_block_to_empty_loc():
     ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(5.0)
     time.sleep(5.0)
     
-    ep_chassis.move(x=0, y=0.75, z=0, xy_speed=1.0).wait_for_completed(2.0)
+    # ep_chassis.move(x=0, y=0.75, z=0, xy_speed=1.0).wait_for_completed(2.0)
+    # time.sleep(2.0)
+    
+    while (turn_to_detect_block(25) < 0):
+        continue
+    
+    ep_chassis.move(x=0, y=0, z=30, z_speed=45).wait_for_completed(2.0)
     time.sleep(2.0)
     
     first = 0
