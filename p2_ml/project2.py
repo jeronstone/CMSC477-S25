@@ -49,18 +49,12 @@ model = YOLO(r"..\runs_v2\detect\train2\weights\best.pt")
 class State(Enum):
     START_2B_2M = 1,
     MOVE_BLOCK_ON_TARGET_1 = 2,
-    GRIP_PICKUP = 3,
-    MOVE_EMPTY_1 = 4,
-    GRIP_DROP = 5,
-    MOVE_BLOCK_ON_TARGET_2 = 6, # could this just be 1 state?
-    #pickup
-    MOVE_TARGET_1 = 7,
-    # drop
-    MOVE_EMPTY_1_BLOCK = 8,
-    # pickup
-    MOVE_TARGET_2 = 9,
-    # drop
-    FINISHED = 10
+    MOVE_EMPTY_1 = 3,
+    MOVE_BLOCK_ON_TARGET_2 = 4,
+    MOVE_TARGET_1 = 5,
+    MOVE_EMPTY_1_BLOCK = 6,
+    MOVE_TARGET_2 = 7,
+    FINISHED = 8
 
 ep_robot = robot.Robot()
 ep_robot.initialize(conn_type="sta", sn="3JKCH7T001008H")
@@ -80,10 +74,19 @@ controller.set_lambda_matrix([3.0, 1.25]) # robot y velocity; robot x velocity
 controller.set_desired_points([(-0.2, -0.7, 0.18), (0.2, -0.7, 0.18), (-0.2, 1.0, 0.18), (0.2, 1.0, 0.18)])
 
 state = State.START_2B_2M
-prev = State.START_2B_2M
+#prev = State.START_2B_2M
+
+first = 0
 
 #state = State.MOVE_BLOCK_ON_TARGET_2
 #prev = State.GRIP_DROP
+
+def rage_quit():
+    cv2.destroyAllWindows()
+    ep_camera.stop_video_stream()
+    ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+    ep_robot.close()
+    exit(0)
 
 def get_yolo_pred(frame, blocks=True, targets=True, clean_frame=None):
     if model.predictor:
@@ -140,10 +143,336 @@ def get_yolo_pred(frame, blocks=True, targets=True, clean_frame=None):
             
     return frame, detections
     
-first = 0
+def grip_pickup():
+    print('PICKUP')
+        
+    ep_chassis.move(x=0.05, y=0, z=0, xy_speed=0.2).wait_for_completed(2.0) # move slightly forward to position tower in gripper
+    time.sleep(2.0)
+    
+    ep_arm.moveto(x=200, y=30).wait_for_completed(2.0)
+    time.sleep(1.0)
+    
+    ep_gripper.close(power=100)
+    time.sleep(1.0)
+    ep_gripper.pause()
+    
+    ep_arm.moveto(x=200, y=60).wait_for_completed(2.0)
+    time.sleep(2.0)
+    
+    print('end pickup')
+
+def grip_drop():
+    print('DROP')
+        
+    # move arm to start pos
+    ep_arm.moveto(x=200, y=30).wait_for_completed(2.0)
+    time.sleep(1.0)
+    
+    ep_gripper.open(power=50)
+    time.sleep(1.0)
+    ep_gripper.pause()
+    
+    ep_arm.moveto(x=200, y=-50).wait_for_completed(2.0)
+    time.sleep(2.0)
+    
+    print('DROP DONE')
+
+def state_start():
+    print("Start")
+        
+    # open gripper
+    ep_gripper.open(power=150)
+    time.sleep(2)
+    ep_gripper.pause()
+    
+    # move arm to start pos
+    ep_arm.moveto(x=200, y=-50).wait_for_completed(2.0)
+    
+    state = State.MOVE_BLOCK_ON_TARGET_1
+
+def state_find_block():
+    print("State is {state}")
+        
+    controller.set_desired_points([(-0.2, -0.7, 0.18), (0.2, -0.7, 0.18), (-0.2, 1.0, 0.18), (0.2, 1.0, 0.18)])
+    
+    try:
+        frame = ep_camera.read_cv2_image(strategy="newest")
+    except:
+        frame = None
+        return
+    if frame is not None:
+        clean_frame = frame.copy()
+        
+    if first < 10: #ignore first 10 frames cuz sometimes it doesn't update
+        first +=1
+        return
+            
+    frame, detections = get_yolo_pred(frame, blocks=True, targets=False, clean_frame=clean_frame)
+    
+    if len(detections) == 0:
+        ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
+    else:
+    
+        corners, detected_block_lines_hough, depth = detections[0] 
+        
+        # print(corners)
+        
+        controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
+        controller.calculate_interaction_matrix()
+        vels = controller.calculate_velocities()
+        # print(f"vels: {vels}")
+
+        # robot x velocity is camera z velocity
+        # robot_x_velocity = vels[2][0]
+        robot_x_velocity = vels[1][0]
+        #print(robot_x_velocity)
+        robot_x_velocity = clamp(robot_x_velocity, ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
+
+        # robot y velocity is camera x velocity
+        robot_y_velocity = vels[0][0]
+        robot_y_velocity = clamp(robot_y_velocity, ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
+
+        # # robot z velocity is inverted camera y velocity
+        # robot_z_velocity = -vels[1][0]
+        # robot_z_velocity = clamp(robot_z_velocity, ROBOT_Z_VELOCITY_MIN, ROBOT_Z_VELOCITY_MAX)
+        # robot_z_position += robot_z_velocity
+        # robot_z_position = clamp(robot_z_position, ROBOT_Z_POSITION_MIN, ROBOT_Z_POSITION_MAX)
+
+        # # robot z angular velocity is camera y angular velocity
+        # robot_z_angular_velocity = vels[3][0]
+        # robot_z_angular_velocity = clamp(robot_z_angular_velocity, ROBOT_Z_ANGULAR_VELOCITY_MIN, ROBOT_Z_ANGULAR_VELOCITY_MAX)
+                        
+        if detected_block_lines_hough is not None:
+            most_vertical = detected_block_lines_hough[0][0]
+            most_horizontal = detected_block_lines_hough[0][0]
+            for i in range(len(detected_block_lines_hough)):
+                # rho = detected_block_lines_hough[i][0][0]
+                # theta = detected_block_lines_hough[i][0][1]
+                # a = math.cos(theta)
+                # b = math.sin(theta)
+                # x0 = a * rho
+                # y0 = b * rho
+                # pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
+                # pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+                # cv2.line(detected_block, pt1, pt2, (0,0,255), 3, cv2.LINE_AA)
+                l = detected_block_lines_hough[i][0]
+                if abs(l[2] - l[0]) < abs(most_vertical[2] - most_vertical[0]):
+                    most_vertical = l
+                if abs(l[3] - l[1]) < abs(most_horizontal[3] - most_horizontal[1]):
+                    most_horizontal = l
+            #cv2.line(detected_block, (most_vertical[0], most_vertical[1]), (most_vertical[2], most_vertical[3]), (0,0,0), 3, cv2.LINE_AA)
+            #cv2.line(detected_block, (most_horizontal[0], most_horizontal[1]), (most_horizontal[2], most_horizontal[3]), (255,255,255), 3, cv2.LINE_AA)
+            #cv2.imshow('detected_block', detected_block)
+            #key = cv2.waitKey(1)
+            #cv2.imshow('detected block', detected_block)
+
+            if most_horizontal is not most_vertical:
+                # most_vertical_angle = math.atan2(most_vertical[3] - most_vertical[1], most_vertical[2] - most_vertical[0])
+                most_horizontal_angle = math.atan2(most_horizontal[3] - most_horizontal[1], most_horizontal[2] - most_horizontal[0])
+                # print(f"vertical {most_vertical_angle} horizontal {most_horizontal_angle}")
+                #print(f"horizontal {most_horizontal_angle}; rotation to align: {most_horizontal_angle}")
+            else:
+                most_horizontal_angle = 0
+        else:
+            most_horizontal_angle = 0
+
+        # send robot z position to arm
+        # ep_arm.moveto(x=200, y=robot_z_position).wait_for_completed(2.0)
+
+        # send robot x, y, and angular z velocities to robot
+        #ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=robot_z_angular_velocity, timeout=5)
+        ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=10.0*most_horizontal_angle, timeout=5)
+        
+        controller.calculate_error_vector()
+        err_nrm = np.linalg.norm(controller.errs)
+        if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
+        #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
+            grip_pickup()
+            cv2.destroyAllWindows()
+            
+            if (state == State.MOVE_BLOCK_ON_TARGET_1):
+                state = State.MOVE_EMPTY_1
+                
+            elif (state == State.MOVE_BLOCK_ON_TARGET_2):
+                            
+                # ep_chassis.move(x=0, y=0, z=20, z_speed=90).wait_for_completed(2.0)
+                # time.sleep(2.0)
+                ep_chassis.move(x=-0.25, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0)
+                time.sleep(2.0)
+                ep_chassis.move(x=0, y=-0.5, z=0, xy_speed=0.75).wait_for_completed(2.0)
+                time.sleep(2.0)
+
+                first = 0
+                #controller.set_desired_points([(-0.9, 0.3, 0.19), (-0.3, 0.3, 0.19), (-0.9, 0.9, 0.19), (-0.3, 0.9, 0.19)])
+                state = State.MOVE_TARGET_1 
+                
+            elif (state == State.MOVE_EMPTY_1_BLOCK):
+                ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(2.0)
+                time.sleep(2.0)
+                ep_chassis.move(x=0, y=1, z=0, xy_speed=0.5).wait_for_completed(2.0)
+                time.sleep(2.0)
+                state = State.MOVE_TARGET_2
+            
+
+    # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
+    print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+    
+    cv2.imshow('frame', frame)
+    key = cv2.waitKey(1)
+    if key == ord('q'):
+        rage_quit()
+
+def state_find_target():
+    print("State is {state}")
+
+    if state == State.MOVE_TARGET_1:
+        controller.set_desired_points([(-1.0, 0.65, 0.8), (-0.45, 0.65, 0.7), (-1.0, 1.0, 0.6), (-0.45, 1.0, 0.5)])
+    else:
+        controller.set_desired_points([(0.45, 0.65, 0.7), (1.0, 0.65, 0.8), (0.45, 1.0, 0.5), (1.0, 1.0, 0.6)])
+    
+    try:
+        frame = ep_camera.read_cv2_image(strategy="newest")
+    except:
+        frame = None
+        return
+    if frame is not None:
+        clean_frame = frame.copy()
+        
+    if first < 10: #ignore first 10 frames cuz sometimes it doesn't update
+        first +=1
+        return
+    
+    frame, detections = get_yolo_pred(frame, blocks=False, targets=True)#, clean_frame=clean_frame)
+    
+    if len(detections) == 0:
+        ep_chassis.drive_speed(x=0, y=0, z=-20, timeout=5)
+    else:
+
+        corners, _, depth = detections[0]
+        
+        controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
+        controller.calculate_interaction_matrix()
+        vels = controller.calculate_velocities()
+        # print(f"vels: {vels}")
+
+        # robot x velocity is camera z velocity
+        # robot_x_velocity = vels[2][0]
+        robot_x_velocity = vels[1][0]
+        #print(robot_x_velocity)
+        robot_x_velocity = clamp(robot_x_velocity, ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
+
+        # robot y velocity is camera x velocity
+        robot_y_velocity = vels[0][0]
+        robot_y_velocity = clamp(robot_y_velocity, ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
+
+        # # robot z velocity is inverted camera y velocity
+        # robot_z_velocity = -vels[1][0]
+        # robot_z_velocity = clamp(robot_z_velocity, ROBOT_Z_VELOCITY_MIN, ROBOT_Z_VELOCITY_MAX)
+        # robot_z_position += robot_z_velocity
+        # robot_z_position = clamp(robot_z_position, ROBOT_Z_POSITION_MIN, ROBOT_Z_POSITION_MAX)
+
+        # # robot z angular velocity is camera y angular velocity
+        # robot_z_angular_velocity = vels[3][0]
+        # robot_z_angular_velocity = clamp(robot_z_angular_velocity, ROBOT_Z_ANGULAR_VELOCITY_MIN, ROBOT_Z_ANGULAR_VELOCITY_MAX)
+
+        # send robot z position to arm
+        # ep_arm.moveto(x=200, y=robot_z_position).wait_for_completed(2.0)
+
+        # send robot x, y, and angular z velocities to robot
+        #ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=robot_z_angular_velocity, timeout=5)
+        ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=0.0, timeout=5)
+
+        controller.calculate_error_vector()
+        err_nrm = np.linalg.norm(controller.errs)
+        if depth < 0.3 and err_nrm < 0.2: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
+        #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
+            
+            z_ang_mv = 30 if state == State.MOVE_TARGET_1 else -30
+            ep_chassis.move(x=0, y=0, z=z_ang_mv, z_speed=20).wait_for_completed(2.0)
+            time.sleep(2.0)
+            ep_chassis.move(x=0.5, y=0, z=0, xy_speed=0.75).wait_for_completed(4.0)
+            time.sleep(4.0)
+
+            ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+            
+            grip_drop()
+            
+            if (state == State.MOVE_EMPTY_1):
+            
+                ep_chassis.move(x=-0.1, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0) # move slightly backward, then sideways
+                time.sleep(2.0)
+
+                ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(5.0)
+                time.sleep(5.0)
+                
+                ep_chassis.move(x=0, y=0.75, z=0, xy_speed=1.0).wait_for_completed(2.0)
+                time.sleep(2.0)
+                
+                first = 0
+                
+                state = State.MOVE_BLOCK_ON_TARGET_2
+            elif (state == State.MOVE_TARGET_1):
+                
+                ep_chassis.move(x=-0.1, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0) # move slightly backward, then sideways
+                time.sleep(2.0)
+                ep_chassis.move(x=0, y=0, z=90, z_speed=45).wait_for_completed(5.0)
+                time.sleep(5.0)
+                first = 0
+                state = State.MOVE_EMPTY_1_BLOCK
+            elif (state == State.MOVE_TARGET_2):
+                state = State.FINISHED
+            else:
+                pass
+
+        # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
+        print(f"depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+    
+    cv2.imshow('frame', frame)
+    key = cv2.waitKey(1)
+    if key == ord('q'):
+        ep_gripper.open(power=150)
+        time.sleep(2)
+        ep_gripper.pause()
+        rage_quit()
+
+def state_move_block_to_empty_loc():
+    print('MOVE EMPTY')
+
+    time.sleep(1.0)
+    # move back 1 meter (?)
+    ep_chassis.move(x=-1.0, y=0, z=0, xy_speed=1.0).wait_for_completed(4.0)
+    time.sleep(4.0)
+
+    ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(5.0)
+    time.sleep(5.0)
+    
+    print('DONE MOVEMENT')
+    
+    state = State.GRIP_DROP
+    prev = State.MOVE_EMPTY_1
+
+def state_finished():
+    print("FINISHED!")
+    time.sleep(1.0)
+    rage_quit()
+    
+state_fcns = {
+    State.START_2B_2M: state_start(),
+    State.MOVE_BLOCK_ON_TARGET_1: state_find_block(),
+    State.MOVE_EMPTY_1: state_move_block_to_empty_loc(),
+    State.MOVE_BLOCK_ON_TARGET_2: state_find_block(),
+    State.MOVE_TARGET_1: state_find_target(),
+    State.MOVE_EMPTY_1_BLOCK: state_find_block(),
+    State.MOVE_TARGET_2: state_find_target(),
+    State.FINISHED: state_finished()
+}
 
 while True:
-            
+    state_fcns[state]()
+
+  
+'''
+while True:
     if state == State.START_2B_2M:
         print("Start")
         
@@ -157,7 +486,7 @@ while True:
         
         state = State.MOVE_BLOCK_ON_TARGET_1
     elif state == State.MOVE_BLOCK_ON_TARGET_1 or state == State.MOVE_BLOCK_ON_TARGET_2 or state == State.MOVE_EMPTY_1_BLOCK:
-        #print("State is {state}")
+        print("State is {state}")
         
         controller.set_desired_points([(-0.2, -0.7, 0.18), (0.2, -0.7, 0.18), (-0.2, 1.0, 0.18), (0.2, 1.0, 0.18)])
         
@@ -369,7 +698,7 @@ while True:
     # elif state == State.MOVE_BLOCK_ON_TARGET_2:
     #     print("State is MOVE_BLOCK_ON_TARGET_2")
     elif state == State.MOVE_TARGET_1 or state == State.MOVE_TARGET_2:
-        #print("State is MOVE_TARGET_1")
+        print("State is {state}")
 
         if state == State.MOVE_TARGET_1:
             controller.set_desired_points([(-1.0, 0.65, 0.8), (-0.45, 0.65, 0.7), (-1.0, 1.0, 0.6), (-0.45, 1.0, 0.5)])
@@ -465,3 +794,4 @@ cv2.destroyAllWindows()
 ep_camera.stop_video_stream()
 ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
 ep_robot.close()
+'''
