@@ -195,7 +195,7 @@ def state_start():
 def state_find_block():
     global state
     global first
-    print("State is {state}")
+    #print(f"State is {state}")
         
     controller.set_desired_points([(-0.2, -0.7, 0.18), (0.2, -0.7, 0.18), (-0.2, 1.0, 0.18), (0.2, 1.0, 0.18)])
     
@@ -209,12 +209,14 @@ def state_find_block():
         
     if first < 10: #ignore first 10 frames cuz sometimes it doesn't update
         first +=1
+        print(f'returning due to first 10 frames: {first} | {state}')
         return
             
     frame, detections = get_yolo_pred(frame, blocks=True, targets=False, clean_frame=clean_frame)
     
     if len(detections) == 0:
-        ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
+        dir = 20 if state == State.MOVE_BLOCK_ON_TARGET_2 else -20
+        ep_chassis.drive_speed(x=0, y=0, z=dir, timeout=5)
     else:
     
         corners, detected_block_lines_hough, depth = detections[0] 
@@ -245,7 +247,7 @@ def state_find_block():
         # # robot z angular velocity is camera y angular velocity
         # robot_z_angular_velocity = vels[3][0]
         # robot_z_angular_velocity = clamp(robot_z_angular_velocity, ROBOT_Z_ANGULAR_VELOCITY_MIN, ROBOT_Z_ANGULAR_VELOCITY_MAX)
-                        
+        most_horizontal_angle = 0
         if detected_block_lines_hough is not None:
             most_vertical = detected_block_lines_hough[0][0]
             most_horizontal = detected_block_lines_hough[0][0]
@@ -275,10 +277,6 @@ def state_find_block():
                 most_horizontal_angle = math.atan2(most_horizontal[3] - most_horizontal[1], most_horizontal[2] - most_horizontal[0])
                 # print(f"vertical {most_vertical_angle} horizontal {most_horizontal_angle}")
                 #print(f"horizontal {most_horizontal_angle}; rotation to align: {most_horizontal_angle}")
-            else:
-                most_horizontal_angle = 0
-        else:
-            most_horizontal_angle = 0
 
         # send robot z position to arm
         # ep_arm.moveto(x=200, y=robot_z_position).wait_for_completed(2.0)
@@ -291,6 +289,9 @@ def state_find_block():
         err_nrm = np.linalg.norm(controller.errs)
         if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
         #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
+
+            print('close to block, transition')
+
             grip_pickup()
             cv2.destroyAllWindows()
             
@@ -317,9 +318,10 @@ def state_find_block():
                 time.sleep(2.0)
                 state = State.MOVE_TARGET_2
             
+            cv2.destroyAllWindows()
 
-    # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
-    print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+        # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
+        print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
     
     cv2.imshow('frame', frame)
     key = cv2.waitKey(1)
@@ -329,7 +331,7 @@ def state_find_block():
 def state_find_target():
     global state
     global first
-    print("State is {state}")
+    #print("State is {state}")
 
     if state == State.MOVE_TARGET_1:
         controller.set_desired_points([(-1.0, 0.65, 0.8), (-0.45, 0.65, 0.7), (-1.0, 1.0, 0.6), (-0.45, 1.0, 0.5)])
@@ -415,9 +417,11 @@ def state_find_target():
                 state = State.FINISHED
             else:
                 pass
+            cv2.destroyAllWindows()
 
         # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity} z {robot_z_velocity} z ang {robot_z_angular_velocity}; arm pos: {robot_z_position}")
         print(f"depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+        
     
     cv2.imshow('frame', frame)
     key = cv2.waitKey(1)
@@ -462,18 +466,21 @@ def state_finished():
     rage_quit()
     
 state_fcns = {
-    State.START_2B_2M: state_start(),
-    State.MOVE_BLOCK_ON_TARGET_1: state_find_block(),
-    State.MOVE_EMPTY_1: state_move_block_to_empty_loc(),
-    State.MOVE_BLOCK_ON_TARGET_2: state_find_block(),
-    State.MOVE_TARGET_1: state_find_target(),
-    State.MOVE_EMPTY_1_BLOCK: state_find_block(),
-    State.MOVE_TARGET_2: state_find_target(),
-    State.FINISHED: state_finished()
+    State.START_2B_2M: state_start,
+    State.MOVE_BLOCK_ON_TARGET_1: state_find_block,
+    State.MOVE_EMPTY_1: state_move_block_to_empty_loc,
+    State.MOVE_BLOCK_ON_TARGET_2: state_find_block,
+    State.MOVE_TARGET_1: state_find_target,
+    State.MOVE_EMPTY_1_BLOCK: state_find_block,
+    State.MOVE_TARGET_2: state_find_target,
+    State.FINISHED: state_finished
 }
 
-while True:
-    state_fcns[state]()
+if __name__ == '__main__':
+    print('hello world!')
+    while True:
+        #print('Current state: {state}')
+        state_fcns[state]()
 
   
 '''
