@@ -139,7 +139,7 @@ def get_yolo_pred(frame, blocks=True, targets=True, clean_frame=None):
 
                 detections.append((corners, detected_block_lines_hough, depth))
             else:
-                detections.append((corners, None, None))
+                detections.append((corners, None, -1))
             
     return frame, detections
     
