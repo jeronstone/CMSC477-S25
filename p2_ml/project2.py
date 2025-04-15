@@ -78,8 +78,7 @@ state = State.START_2B_2M
 
 first = 0
 
-#state = State.MOVE_BLOCK_ON_TARGET_2
-#prev = State.GRIP_DROP
+#state = State.MOVE_EMPTY_1_BLOCK
 
 def rage_quit():
     cv2.destroyAllWindows()
@@ -161,6 +160,8 @@ def turn_to_detect_block(speed):
         return -1
     if frame is not None:
         clean_frame = frame.copy()
+        
+    first_detect = True
     
     while True:
         try:
@@ -171,6 +172,7 @@ def turn_to_detect_block(speed):
         frame, detections = get_yolo_pred(frame, blocks=True, targets=False, clean_frame=clean_frame)
         
         if len(detections) == 0:
+            first_detect = False
             ep_chassis.drive_speed(x=0, y=0, z=speed, timeout=5)
             
             cv2.imshow('frame', frame)
@@ -178,6 +180,8 @@ def turn_to_detect_block(speed):
             if key == ord('q'):
                 rage_quit()
         else:
+            if first_detect:
+                return 2
             cv2.destroyAllWindows()
             break
             return 1
@@ -188,17 +192,17 @@ def grip_pickup():
     print('PICKUP')
         
     ep_chassis.move(x=0.05, y=0, z=0, xy_speed=0.2).wait_for_completed(2.0) # move slightly forward to position tower in gripper
-    #time.sleep(2.0)
+    time.sleep(2.0)
     
     # ep_arm.moveto(x=200, y=10).wait_for_completed(2.0)
-    # time.sleep(1.0)
+    #time.sleep(1.0)
     
-    ep_gripper.close(power=100)
+    ep_gripper.close(power=125)
     time.sleep(1.0)
     ep_gripper.pause()
     
     ep_arm.moveto(x=200, y=-10).wait_for_completed(2.0)
-    #time.sleep(2.0)
+    time.sleep(2.0)
     
     print('end pickup')
 
@@ -207,17 +211,17 @@ def grip_drop():
         
     # move arm to start pos
     # ep_arm.moveto(x=200, y=10).wait_for_completed(2.0)
-    # time.sleep(1.0)
+    #time.sleep(1.0)
 
     ep_arm.moveto(x=200, y=-50).wait_for_completed(2.0)
-    #time.sleep(2.0)
+    time.sleep(2.0)
     
     ep_gripper.open(power=50)
     time.sleep(1.0)
     ep_gripper.pause()
     
     # ep_arm.moveto(x=200, y=-50).wait_for_completed(2.0)
-    # time.sleep(2.0)
+    time.sleep(2.0)
     
     print('DROP DONE')
 
@@ -344,22 +348,27 @@ def state_find_block():
                 
             elif (state == State.MOVE_BLOCK_ON_TARGET_2):
                             
-                # ep_chassis.move(x=0, y=0, z=20, z_speed=90).wait_for_completed(2.0)
-                # time.sleep(2.0)
+                ep_chassis.move(x=0, y=0, z=20, z_speed=90).wait_for_completed(2.0)
+                time.sleep(2.0)
                 ep_chassis.move(x=-0.25, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0)
                 time.sleep(1.0)
-                ep_chassis.move(x=0, y=-0.5, z=0, xy_speed=0.75).wait_for_completed(2.0)
-                #time.sleep(2.0)
+                ep_chassis.move(x=0, y=-0.75, z=0, xy_speed=0.75).wait_for_completed(2.0)
+                time.sleep(2.0)
 
                 first = 0
                 #controller.set_desired_points([(-0.9, 0.3, 0.19), (-0.3, 0.3, 0.19), (-0.9, 0.9, 0.19), (-0.3, 0.9, 0.19)])
                 state = State.MOVE_TARGET_1 
                 
             elif (state == State.MOVE_EMPTY_1_BLOCK):
-                ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(2.0)
-                time.sleep(1.0)
-                ep_chassis.move(x=0, y=1, z=0, xy_speed=0.5).wait_for_completed(2.0)
-                #time.sleep(2.0)
+                ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(3.0)
+                time.sleep(3.0)
+                
+                ep_chassis.move(x=0, y=0.75, z=0, xy_speed=1.0).wait_for_completed(2.0)
+                time.sleep(4.0)
+                
+                ep_chassis.move(x=0, y=0, z=-45, z_speed=45).wait_for_completed(1.5)
+                time.sleep(1.5)
+                
                 state = State.MOVE_TARGET_2
             
             cv2.destroyAllWindows()
@@ -378,9 +387,9 @@ def state_find_target():
     #print("State is {state}")
 
     if state == State.MOVE_TARGET_1:
-        controller.set_desired_points([(-1.0, 0.65, 0.8), (-0.45, 0.65, 0.7), (-1.0, 1.0, 0.6), (-0.45, 1.0, 0.5)])
+        controller.set_desired_points([(-0.9, 0.55, 0.8), (-0.35, 0.55, 0.7), (-0.9, 0.9, 0.6), (-0.35, 0.9, 0.5)])
     else:
-        controller.set_desired_points([(0.45, 0.65, 0.7), (1.0, 0.65, 0.8), (0.45, 1.0, 0.5), (1.0, 1.0, 0.6)])
+        controller.set_desired_points([(0.35, 0.55, 0.7), (0.9, 0.55, 0.8), (0.35, 0.9, 0.5), (0.9, 0.9, 0.6)])
     
     try:
         frame = ep_camera.read_cv2_image(strategy="newest")
@@ -397,7 +406,10 @@ def state_find_target():
     frame, detections = get_yolo_pred(frame, blocks=False, targets=True)#, clean_frame=clean_frame)
     
     if len(detections) == 0:
-        ep_chassis.drive_speed(x=0, y=0, z=-20, timeout=5)
+        if state == State.MOVE_TARGET_1:
+            ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
+        else:
+            ep_chassis.drive_speed(x=0, y=0, z=-20, timeout=5)
     else:
 
         corners, _, depth = detections[0]
@@ -436,14 +448,21 @@ def state_find_target():
 
         controller.calculate_error_vector()
         err_nrm = np.linalg.norm(controller.errs)
-        if depth < 0.3 and err_nrm < 0.2: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
+        if depth < 0.3 and err_nrm < 0.75: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
         #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
             
-            z_ang_mv = 30 if state == State.MOVE_TARGET_1 else -30
-            ep_chassis.move(x=0, y=0, z=z_ang_mv, z_speed=20).wait_for_completed(2.0)
-            time.sleep(1.0)
-            ep_chassis.move(x=0.5, y=0, z=0, xy_speed=0.75).wait_for_completed(4.0)
-            time.sleep(1.0)
+            if state == State.MOVE_TARGET_1:
+                ep_chassis.move(x=0, y=0, z=30, z_speed=45).wait_for_completed(2.0)
+            else:
+                print('HELLO!!!')
+                ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+                time.sleep(2.0)
+                ep_chassis.drive_speed(x=0, y=0, z=45, timeout=5)
+                time.sleep(0.5)
+                ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+            time.sleep(2.0)
+            ep_chassis.move(x=0.35, y=0, z=0, xy_speed=0.5).wait_for_completed(4.0)
+            time.sleep(4.0)
 
             ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
             
@@ -452,9 +471,16 @@ def state_find_target():
             if (state == State.MOVE_TARGET_1):
                 
                 ep_chassis.move(x=-0.1, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0) # move slightly backward, then sideways
-                time.sleep(1.0)
-                ep_chassis.move(x=0, y=0, z=90, z_speed=45).wait_for_completed(5.0)
-                time.sleep(1.0)
+                time.sleep(2.0)
+                
+                ep_chassis.move(x=0, y=0, z=90.0, z_speed=45).wait_for_completed(2.0)
+                time.sleep(2.5)
+                
+                while (turn_to_detect_block(-25) < 0):
+                    continue
+                ep_chassis.move(x=0, y=0, z=30, z_speed=45).wait_for_completed(2.0)
+                time.sleep(2.0)
+                
                 first = 0
                 state = State.MOVE_EMPTY_1_BLOCK
             elif (state == State.MOVE_TARGET_2):
@@ -483,28 +509,30 @@ def state_move_block_to_empty_loc():
     time.sleep(1.0)
     # move back 1 meter (?)
     ep_chassis.move(x=-1.0, y=0, z=0, xy_speed=1.0).wait_for_completed(4.0)
-    time.sleep(1.0)
+    time.sleep(4.0)
     ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(3.0)
-    #time.sleep(3.0)
+    time.sleep(3.0)
     
     print('DONE MOVEMENT')
     
     grip_drop()
     
     ep_chassis.move(x=-0.1, y=0, z=0, xy_speed=0.5).wait_for_completed(2.0) # move slightly backward, then sideways
-    time.sleep(1.0)
+    time.sleep(2.0)
 
     ep_chassis.move(x=0, y=0, z=180, z_speed=45).wait_for_completed(3.0)
-    time.sleep(1.0)
+    time.sleep(3.0)
     
-    ep_chassis.move(x=0, y=0.5, z=0, xy_speed=1.0).wait_for_completed(2.0)
-    time.sleep(1.0)
+    ep_chassis.move(x=0, y=0.6, z=0, xy_speed=1.0).wait_for_completed(2.0)
+    time.sleep(4.0)
     
-    while (turn_to_detect_block(25) < 0):
-        continue
+    # x = turn_to_detect_block(25)
+    # while (x < 0):
+    #     x = turn_to_detect_block(25)
     
-    ep_chassis.move(x=0, y=0, z=-30, z_speed=45).wait_for_completed(2.0)
-    time.sleep(1.0)
+    # if x != 2:    
+    #     ep_chassis.move(x=0, y=0, z=-30, z_speed=45).wait_for_completed(2.0)
+    #     time.sleep(2.0)
     
     first = 0
     state = State.MOVE_BLOCK_ON_TARGET_2
