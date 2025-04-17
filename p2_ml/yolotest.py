@@ -55,8 +55,17 @@ ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
 ep_camera = ep_robot.camera
 ep_camera.start_video_stream(display=False, resolution=camera.STREAM_360P)
 ep_arm = ep_robot.robotic_arm
-ep_arm.moveto(x=200, y=-50).wait_for_completed()
 ep_gripper = ep_robot.gripper
+
+ep_gripper.open(power=100)
+time.sleep(2.0)
+ep_gripper.pause()
+
+ep_gripper.close(power=100)
+time.sleep(2.0)
+ep_gripper.pause()
+ep_arm.moveto(x=200, y=50).wait_for_completed()
+
 
 # Start printing the gripper position
 # ep_arm.sub_position(freq=5, callback=sub_data_handler)
