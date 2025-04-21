@@ -16,3 +16,8 @@ def sub_data_handler(sub_info):
     # You can use these values to confirm the robot arm is where it is supposed to be
     # It is also usable for determine the right setpoints to send to "moveto" commands
     # print("Robotic Arm: pos x:{0}, pos y:{1}".format(pos_x, pos_y))
+    
+# callback for chassis subposition
+def chassis_subpos_cb(pos):
+    x,y,z = pos
+    return -x, y, z

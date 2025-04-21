@@ -12,6 +12,12 @@ from util import *
 
 vision = Vision('')
 
+THEIR_CLOSET_BOUNDARY = [(x,y), (x,y)]
+THEIR_ROOM_BOUNDARY = [(x,y), (x,y)]
+HALLWAY_BOUNDARY = [(x,y), (x,y)]
+OUR_ROOM_BOUNDARY = [(x,y), (x,y)]
+OUR_CLOSET_BOUNDARY = [(x,y), (x,y)]
+
 class State():
         
     def __init__(self):
@@ -143,6 +149,7 @@ ep_sensor = ep_robot.sensor
 
 # Start printing the gripper position
 ep_arm.sub_position(freq=5, callback=sub_data_handler)
+ep_chassis.sub_position(cs=1, freq=5, callback=chassis_subpos_cb)
 
 controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
 # controller.set_lambda_matrix([5.0, 50.0, 1.75, 1000.0]) # robot y velocity; robot z velocity; robot x velocity; robot z angular velocity
