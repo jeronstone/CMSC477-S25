@@ -12,6 +12,10 @@ from util import *
 
 vision = Vision('')
 
+FEET_TO_METER_DIV_BY = 3.281
+
+x = -1
+y = -1
 THEIR_CLOSET_BOUNDARY = [(x,y), (x,y)]
 THEIR_ROOM_BOUNDARY = [(x,y), (x,y)]
 HALLWAY_BOUNDARY = [(x,y), (x,y)]
