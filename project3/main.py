@@ -12,7 +12,7 @@ from util import *
 from state import *
 from agents import *
 
-# vision = Vision('')
+# vision = Vision(r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\runs\detect\train2\weights\best.pt")
 
 # ep_robot = robot.Robot()
 # ep_robot.initialize(conn_type="sta", sn="3JKCH7T001008H")
