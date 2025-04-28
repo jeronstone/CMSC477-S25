@@ -5,12 +5,15 @@ from robomaster import robot
 from robomaster import camera
 from queue import Empty
 import time
+from ultralytics import YOLO
+
+model = YOLO(r"..\runs\detect\train2\weights\best.pt")
 
 FEET_TO_METER_DIV_BY = 3.281
 
 # initial estimates, need to measure and refine
 OUR_CLOSET_BOUNDARY = [(2.6, 0.60), (3.6, 1.5)]
-OUR_ROOM_BOUNDARY = [(0.25, 0.25), (2.6, 1.8)]
+OUR_ROOM_BOUNDARY = [(0.25, 0.25), (2.6, 2.25)]
 HALLWAY_BOUNDARY = [(1.0, 2.5), (2.6, 4.5)]
 THEIR_ROOM_BOUNDARY = [(3.75/FEET_TO_METER_DIV_BY, 12.75/FEET_TO_METER_DIV_BY), (8.25/FEET_TO_METER_DIV_BY, 20.25/FEET_TO_METER_DIV_BY)]
 THEIR_CLOSET_BOUNDARY = [(0.75/FEET_TO_METER_DIV_BY, 15.75/FEET_TO_METER_DIV_BY), (2.25/FEET_TO_METER_DIV_BY, 20.5/FEET_TO_METER_DIV_BY)]
@@ -23,7 +26,8 @@ class MapController():
         self.their_position = (2.0, 6.0)
         self.ep_robot = ep_robot
         self.ep_chassis = ep_robot.chassis
-        self.ep_chassis.sub_position(cs=0, freq=5, callback=self.chassis_callback)
+        self.ep_chassis.sub_position(cs=1, freq=5, callback=self.chassis_callback)
+        self.ep_chassis.sub_attitude(freq=5, callback=self.attitude_callback)
         # self.ep_chassis.sub_velocity(freq=5, callback=self.vel_callback)
 
     def chassis_callback(self, pos):
@@ -32,6 +36,10 @@ class MapController():
         self.our_position = (float(x)+1.0, -float(y-1.0))
         print(f"current position: {self.our_position}")
         print(self.get_current_location())
+
+    def attitude_callback(self, pos):
+        yaw, pitch, roll = pos
+        print(f"yaw: {yaw} pitch: {pitch} roll: {roll}")
 
     def vel_callback(self, pos):
         vgx, vgy, vgz, vbx, vby, vbz = pos
@@ -64,12 +72,32 @@ if __name__ == "__main__":
 
     while True:
         try:
-            img = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
+            frame = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
         except Empty:
             time.sleep(0.001)
             continue
 
-        cv2.imshow("img", img)
+        if frame is not None:
+            start = time.time()
+            if model.predictor:
+                model.predictor.args.verbose = False
+            result = model.predict(source=frame, show=False)[0]
+
+
+            # DIY visualization is much faster than show=True for some reason
+            boxes = result.boxes
+            for box in boxes:
+                xyxy = box.xyxy.cpu().numpy().flatten()
+                cls = int(box.cls)
+                class_label = result.names[cls]
+                cv2.rectangle(frame,
+                            (int(xyxy[0]), int(xyxy[1])), 
+                            (int(xyxy[2]), int(xyxy[3])),
+                            color=(0, 0, 255), thickness=2)
+                
+                cv2.putText(frame, class_label, (int(xyxy[0]), int(xyxy[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+        cv2.imshow("img", frame)
         key = cv2.waitKey(1)
         if key == ord('w'):
             x_vel += 0.1
