@@ -41,6 +41,8 @@ class Robot():
         self.our_position = (1.0, 1.0)
         self.our_rotation = None
         self.frame_rotation = None
+        
+        self.curr_state = "MOVE_LEFTMOST_BLOCK"
 
         # vision controller
         self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
@@ -94,6 +96,8 @@ class Robot():
         
         self.ep_arm.moveto(x=200, y=-10).wait_for_completed(2.0)
         time.sleep(2.0)
+        
+        self.curr_state = "DONE"
         
     def grip_drop(self):
 
@@ -179,6 +183,7 @@ class Robot():
             if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
             #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
                 print('close to block, transition')
+                self.curr_state = "GRIP_PICKUP"
                 return fr, 1
             print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
             return fr, 0
@@ -283,8 +288,11 @@ if __name__ == "__main__":
     x_vel = 0.0
     y_vel = 0.0
     z_vel = 0.0
-
+    
+    state_done_flag = False
+        
     while True:
+
         try:
             frame = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
         except Empty:
@@ -337,9 +345,23 @@ if __name__ == "__main__":
         led_blue = clamp(int(abs(z_vel) * 10), 0, 255)
         # _robot.ep_chassis.drive_speed(x=x_vel, y=y_vel, z=z_vel, timeout=5)
         ep_led.set_led(comp='all', r=led_red, g=led_green, b=led_blue, effect='on')
-        fr, ret = _robot.move_to_leftmost_block(frame)
-        if ret == 1:
-            break
+        
+        if state_done_flag:
+            # todo get new action
+            state_done_flag = False
+        
+        if _robot.curr_state == "MOVE_LEFTMOST_BLOCK":
+            fr, ret = _robot.move_to_leftmost_block(frame)
+        elif _robot.curr_state == "GRIP_PICKUP":
+            _robot.grip_pickup()
+        elif _robot.curr_state == "DONE":
+            state_done_flag = True
+        #_robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1])
+        
+        
+        # fr, ret = _robot.move_to_leftmost_block(frame)
+        # if ret == 1:
+        #     break
 
         cv2.imshow("img", fr)
 

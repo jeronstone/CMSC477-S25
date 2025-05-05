@@ -24,6 +24,17 @@ def chassis_subpos_cb(pos):
     x,y,z = pos
     return -x, y, z
 
+# class StateMachine():
+    
+#     '''
+#     @param states: string list of stat names
+#     @param transitions: list of transitions for each state. 
+#     len of both params should match, integer index should represent same state
+#     '''
+#     def __init__(init, states, transitions):
+#         self.states = states
+#         self.transitions = transitions
+
 # action enum
 class Action(Enum):
     PICKUP_BLOCK_2x2 = 0,
