@@ -1,7 +1,10 @@
 from util import *
 from state import *
 from vision import *
+from map_controller import *
 from ibvs_controller import *
+from state import *
+from agents import *
 
 import cv2
 from robomaster import robot
@@ -23,14 +26,23 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 class Robot():
     def __init__(self, ep_robot):
+        # robomaster variables
         self.ep_robot = ep_robot
         self.ep_chassis = ep_robot.chassis
+        self.ep_chassis.sub_attitude(freq=5, callback=self.attitude_callback)
         self.ep_chassis.sub_position(cs=0, freq=5, callback=self.chassis_callback)
-        self.ep_gripper = ep_robot.gripper
-        
+
+        # vision controller
         self.vision = Vision(r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\runs\detect\train2\weights\best.pt")
-        self.ibvs_controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
-        
+
+        # minimax agent
+        self.minimax_agent = MiniMaxAgent(State(), 2*2)
+
+        # map controller
+        self.map = MapController(ep_robot)
+
+        # IBVS controller
+        self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
         self.controller.set_lambda_matrix([3.0, 1.25]) # robot y velocity; robot x velocity
         self.controller.set_desired_points([(-0.2, -0.7, 0.18), (0.2, -0.7, 0.18), (-0.2, 1.0, 0.18), (0.2, 1.0, 0.18)])
 
