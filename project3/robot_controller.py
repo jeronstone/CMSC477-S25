@@ -31,6 +31,10 @@ class Robot():
         self.ep_chassis = ep_robot.chassis
         self.ep_chassis.sub_attitude(freq=5, callback=self.attitude_callback)
         self.ep_chassis.sub_position(cs=0, freq=5, callback=self.chassis_callback)
+        
+        self.ep_camera = ep_robot.camera
+        self.ep_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
+        self.ep_led = ep_robot.led
 
         # vision controller
         self.vision = Vision(r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\runs\detect\train2\weights\best.pt")
@@ -81,64 +85,85 @@ class Robot():
         
         time.sleep(2.0)
         
-    def move_to_block(self, frame):
+    def move_to_leftmost_block(self, frame):
         
-        fr, detections = self.vision.get_yolo_pred(frame, hough=True)
-        
-        if len(detections) == 0:
-            self.ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
-        else:
-        
-            # TODO determine which detection to follow
-            # blocks are cls = 2, 3, 4
-            cls, corners, detected_block_lines_hough, depth = detections[0]
-                    
-            controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
-            controller.calculate_interaction_matrix()
-            vels = controller.calculate_velocities()
-
-            # robot x velocity is camera z velocity
-            robot_x_velocity = vels[1][0]
-            robot_x_velocity = clamp(robot_x_velocity, ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
-
-            # robot y velocity is camera x velocity
-            robot_y_velocity = vels[0][0]
-            robot_y_velocity = clamp(robot_y_velocity, ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
-
-            # hough transform for rotational velocity
-            most_horizontal_angle = 0
-            if detected_block_lines_hough is not None:
-                most_vertical = detected_block_lines_hough[0][0]
-                most_horizontal = detected_block_lines_hough[0][0]
-                for i in range(len(detected_block_lines_hough)):
-                    l = detected_block_lines_hough[i][0]
-                    if abs(l[2] - l[0]) < abs(most_vertical[2] - most_vertical[0]):
-                        most_vertical = l
-                    if abs(l[3] - l[1]) < abs(most_horizontal[3] - most_horizontal[1]):
-                        most_horizontal = l
-                #cv2.line(detected_block, (most_vertical[0], most_vertical[1]), (most_vertical[2], most_vertical[3]), (0,0,0), 3, cv2.LINE_AA)
-                #cv2.line(detected_block, (most_horizontal[0], most_horizontal[1]), (most_horizontal[2], most_horizontal[3]), (255,255,255), 3, cv2.LINE_AA)
-                #cv2.imshow('detected_block', detected_block)
-                #key = cv2.waitKey(1)
-                #cv2.imshow('detected block', detected_block)
-
-                if most_horizontal is not most_vertical:
-                    # most_vertical_angle = math.atan2(most_vertical[3] - most_vertical[1], most_vertical[2] - most_vertical[0])
-                    most_horizontal_angle = math.atan2(most_horizontal[3] - most_horizontal[1], most_horizontal[2] - most_horizontal[0])
-                    # print(f"vertical {most_vertical_angle} horizontal {most_horizontal_angle}")
-                    #print(f"horizontal {most_horizontal_angle}; rotation to align: {most_horizontal_angle}")
-
-
-            # send robot x, y, and angular z velocities to robot
-            #ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=robot_z_angular_velocity, timeout=5)
-            self.ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=10.0*most_horizontal_angle, timeout=5)
+         while True:
             
-            controller.calculate_error_vector()
-            err_nrm = np.linalg.norm(controller.errs)
-            if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
-            #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
-                print('close to block, transition')
-            print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+            try:
+                frame = self.ep_camera.read_cv2_image(strategy="newest")
+            except:
+                continue
+        
+            fr, detections = self.vision.get_yolo_pred(frame, hough=True)
+            
+            if len(detections) == 0:
+                self.ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
+            else:
+            
+                # TODO determine which detection to follow
+                # blocks are cls = 2, 3, 4
+                
+                leftmost = 999
+                leftmost_idx = -1
+                for i, d in enumerate(detections):
+                    cls, corners, detected_block_lines_hough, depth = d
+                    if cls >= 2 and cls <= 4: # if its a block
+                        if corners[0] < leftmost: # if its more left than a previous block
+                            leftmost = corners[0]
+                            leftmost_idx = i
+                            
+                if leftmost_idx == -1:
+                    print(f'No leftmost block detected')
+                    continue
+                
+                cls, corners, detected_block_lines_hough, depth = detections[leftmost_idx]
+                        
+                controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
+                controller.calculate_interaction_matrix()
+                vels = controller.calculate_velocities()
+
+                # robot x velocity is camera z velocity
+                robot_x_velocity = vels[1][0]
+                robot_x_velocity = clamp(robot_x_velocity, ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
+
+                # robot y velocity is camera x velocity
+                robot_y_velocity = vels[0][0]
+                robot_y_velocity = clamp(robot_y_velocity, ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
+
+                # hough transform for rotational velocity
+                most_horizontal_angle = 0
+                if detected_block_lines_hough is not None:
+                    most_vertical = detected_block_lines_hough[0][0]
+                    most_horizontal = detected_block_lines_hough[0][0]
+                    for i in range(len(detected_block_lines_hough)):
+                        l = detected_block_lines_hough[i][0]
+                        if abs(l[2] - l[0]) < abs(most_vertical[2] - most_vertical[0]):
+                            most_vertical = l
+                        if abs(l[3] - l[1]) < abs(most_horizontal[3] - most_horizontal[1]):
+                            most_horizontal = l
+                    #cv2.line(detected_block, (most_vertical[0], most_vertical[1]), (most_vertical[2], most_vertical[3]), (0,0,0), 3, cv2.LINE_AA)
+                    #cv2.line(detected_block, (most_horizontal[0], most_horizontal[1]), (most_horizontal[2], most_horizontal[3]), (255,255,255), 3, cv2.LINE_AA)
+                    #cv2.imshow('detected_block', detected_block)
+                    #key = cv2.waitKey(1)
+                    #cv2.imshow('detected block', detected_block)
+
+                    if most_horizontal is not most_vertical:
+                        # most_vertical_angle = math.atan2(most_vertical[3] - most_vertical[1], most_vertical[2] - most_vertical[0])
+                        most_horizontal_angle = math.atan2(most_horizontal[3] - most_horizontal[1], most_horizontal[2] - most_horizontal[0])
+                        # print(f"vertical {most_vertical_angle} horizontal {most_horizontal_angle}")
+                        #print(f"horizontal {most_horizontal_angle}; rotation to align: {most_horizontal_angle}")
+
+
+                # send robot x, y, and angular z velocities to robot
+                #ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=robot_z_angular_velocity, timeout=5)
+                self.ep_chassis.drive_speed(x=robot_x_velocity, y=robot_y_velocity, z=10.0*most_horizontal_angle, timeout=5)
+                
+                controller.calculate_error_vector()
+                err_nrm = np.linalg.norm(controller.errs)
+                if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
+                #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
+                    print('close to block, transition')
+                print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
     
     
     DIST_THRESH_X = 0.1
@@ -172,15 +197,33 @@ class Robot():
             
         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
         return 1
+    
+    def move_our_closet(self):
+        self.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1])
+        
+        while True:
+            try:
+                frame = self.ep_camera.read_cv2_image(strategy="newest")
+            except:
+                continue
+        
+            fr, detections = self.vision.get_yolo_pred(frame, False)
+            
+            num_blocks=0
+            for d in detections:
+                cls, corners, detected_block_lines_hough, depth = d
+                if cls >=2 and cls <= 4:
+                    num_blocks+=1
+            print(f'{num_blocks} blocks detected')
+            break
+            
+        self.move_to_leftmost_block()
             
             
 if __name__ == "__main__":
     ep_robot = robot.Robot()
     ep_robot.initialize(conn_type="sta", sn="3JKCH7T001008H")
     _robot = Robot(ep_robot)
-    ep_camera = ep_robot.camera
-    ep_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
-    ep_led = ep_robot.led
     
     time.sleep(1.0)
     print('5 sec pass')
