@@ -43,6 +43,8 @@ def Vision():
                 cv2.putText(frame, str((round(corners[2], 2), round(corners[3], 2))), (int(xyxy[2]), int(xyxy[3])), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255))
                 cv2.putText(frame, str((round(corners[0], 2), round(corners[1], 2))), (int(xyxy[0]), int(xyxy[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255))
             
+                cls = int(box.cls)
+            
                 if hough:
                     if clean_frame is not None:
                         detection_y = int(xyxy[3]) - int(xyxy[1])
@@ -57,10 +59,10 @@ def Vision():
                 
                     depth = (0.064*314.0)/(int(xyxy[2])-int(xyxy[0])) # actual block length is 0.158 meters; however, in the worst case, we will only see around 0.1 meters of the block, so use that as the depth. this means we underestimate the depth at every iteration
 
-                    detections.append((corners, depth, detected_block_lines_hough))
+                    detections.append((cls, corners, depth, detected_block_lines_hough))
                 else:
                     depth = (0.2*314.0)/(int(xyxy[2])-int(xyxy[0]))
-                    detections.append((corners, depth, None))
+                    detections.append((cls, corners, depth, None))
                 
         return frame, detections
     
