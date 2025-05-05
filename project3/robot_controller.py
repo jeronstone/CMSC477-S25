@@ -201,6 +201,7 @@ class Robot():
     def move_our_closet(self):
         self.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1])
         
+        '''
         while True:
             try:
                 frame = self.ep_camera.read_cv2_image(strategy="newest")
@@ -216,6 +217,7 @@ class Robot():
                     num_blocks+=1
             print(f'{num_blocks} blocks detected')
             break
+        '''
             
         self.move_to_leftmost_block()
             
