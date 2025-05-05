@@ -147,10 +147,10 @@ class Robot():
             velo_y = 0.0
             
             if err_x > self.DIST_THRESH_X:
-                velo_x = math.copysign(2.0, err_x)
+                velo_x = -math.copysign(2.0, err_x)
                 
             if err_y > self.DIST_THRESH_Y:
-                velo_y = math.copysign(2.0, err_y)
+                velo_y = -math.copysign(2.0, err_y)
             
             self.ep_chassis.drive_speed(x=velo_x, y=velo_y, z=0.0, timeout=5)
             time.sleep(0.1)
