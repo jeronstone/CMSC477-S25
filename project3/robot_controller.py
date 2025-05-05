@@ -131,6 +131,9 @@ class Robot():
     
     DIST_THRESH_X = 1
     DIST_THRESH_Y = 1
+    '''
+    Moves to global position x, y on the map using simple p loop and constant speed
+    '''
     def move_to_xy(self, desired_x, desired_y):
         err_x = self.our_position[0] - desired_x
         err_y = self.our_position[1] - desired_y
