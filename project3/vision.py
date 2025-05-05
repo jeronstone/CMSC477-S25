@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-def Vision():
+class Vision():
     
     def __init__(self, model_pth):
         self.model = YOLO(model_pth)

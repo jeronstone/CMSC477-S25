@@ -45,7 +45,8 @@ class Robot():
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
         self.controller.set_lambda_matrix([3.0, 1.25]) # robot y velocity; robot x velocity
         self.controller.set_desired_points([(-0.2, -0.7, 0.18), (0.2, -0.7, 0.18), (-0.2, 1.0, 0.18), (0.2, 1.0, 0.18)])
-
+        
+        self.our_position = (1.0,1.0)
 
     def chassis_callback(self, pos):
         x, y, z = pos
@@ -140,12 +141,13 @@ class Robot():
             print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
     
     
-    DIST_THRESH_X = 1
-    DIST_THRESH_Y = 1
+    DIST_THRESH_X = 0.1
+    DIST_THRESH_Y = 0.1
     '''
     Moves to global position x, y on the map using simple p loop and constant speed
     '''
     def move_to_xy(self, desired_x, desired_y):
+        
         err_x = self.our_position[0] - desired_x
         err_y = self.our_position[1] - desired_y
 
@@ -154,17 +156,36 @@ class Robot():
             err_x = self.our_position[0] - desired_x
             err_y = self.our_position[1] - desired_y
             
+            print(f'Error: {err_x} {err_y}')
+            
             velo_x = 0.0
             velo_y = 0.0
             
-            if err_x > self.DIST_THRESH_X:
+            if abs(err_x) > self.DIST_THRESH_X:
                 velo_x = -math.copysign(2.0, err_x)
                 
-            if err_y > self.DIST_THRESH_Y:
+            if abs(err_y) > self.DIST_THRESH_Y:
                 velo_y = -math.copysign(2.0, err_y)
             
             self.ep_chassis.drive_speed(x=velo_x, y=velo_y, z=0.0, timeout=5)
             time.sleep(0.1)
             
         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+        return 1
             
+            
+if __name__ == "__main__":
+    ep_robot = robot.Robot()
+    ep_robot.initialize(conn_type="sta", sn="3JKCH7T001008H")
+    _robot = Robot(ep_robot)
+    ep_camera = ep_robot.camera
+    ep_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
+    ep_led = ep_robot.led
+    
+    time.sleep(1.0)
+    print('5 sec pass')
+    
+    _robot.move_to_xy(1.5,1.5)
+    
+    print('done')
+    exit(0)
