@@ -32,11 +32,11 @@ class Vision():
                             color=(0, 0, 255), thickness=2)
                 
                 corners = [int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])]
-                corners[0] = 2*((corners[0]) / 640) - 1
-                corners[2] = 2*((corners[2]) / 640) - 1
+                corners[0] = 2*((corners[0]) / frame.shape[1]) - 1
+                corners[2] = 2*((corners[2]) / frame.shape[1]) - 1
                 
-                corners[1] = 2*((corners[1]) / 360) - 1
-                corners[3] = 2*((corners[3]) / 360) - 1
+                corners[1] = 2*((corners[1]) / frame.shape[0]) - 1
+                corners[3] = 2*((corners[3]) / frame.shape[0]) - 1
 
                 cv2.putText(frame, str((round(corners[2], 2), round(corners[1], 2))), (int(xyxy[2]), int(xyxy[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255))
                 cv2.putText(frame, str((round(corners[0], 2), round(corners[3], 2))), (int(xyxy[0]), int(xyxy[3])), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255))
