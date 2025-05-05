@@ -33,8 +33,10 @@ class Robot():
         # robomaster variables
         self.ep_robot = ep_robot
         self.ep_chassis = ep_robot.chassis
-        self.ep_chassis.sub_attitude(freq=5, callback=self.attitude_callback)
-        self.ep_chassis.sub_position(cs=0, freq=5, callback=self.chassis_callback)
+        self.ep_chassis.sub_attitude(freq=10, callback=self.attitude_callback)
+        self.ep_chassis.sub_position(cs=0, freq=10, callback=self.chassis_callback)
+        self.ep_gripper = ep_robot.gripper
+        self.ep_arm = ep_robot.robotic_arm
         self.ep_led = ep_robot.led
 
         # position/rotation variables
@@ -42,7 +44,7 @@ class Robot():
         self.our_rotation = None
         self.frame_rotation = None
         
-        self.curr_state = "MOVE_LEFTMOST_BLOCK"
+        self.curr_state = "MOVE_CLOSET"#"MOVE_LEFTMOST_BLOCK"
 
         # vision controller
         self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
@@ -51,7 +53,7 @@ class Robot():
         self.minimax_agent = MiniMaxAgent(State(), 2*2)
 
         # map controller
-        self.map = MapController(ep_robot)
+        #self.map = MapController(ep_robot)
 
         # IBVS controller
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
@@ -69,8 +71,8 @@ class Robot():
             rotated_xy = self.frame_rotation @ np.array([[float(x)], [float(y)]])
             self.our_position = (rotated_xy[1][0] + 3.0/FEET_TO_METER_DIV_BY, rotated_xy[0][0] + 3.0/FEET_TO_METER_DIV_BY)
         
-        print(f"current position: {self.our_position}")
-        print(self.get_current_location())
+        #print(f"current position: {self.our_position}")
+        #print(self.get_current_location())
 
     def attitude_callback(self, pos):
         yaw, pitch, roll = pos
@@ -78,12 +80,12 @@ class Robot():
             theta = np.radians(yaw - 90) # how offset we are from +90
             c, s = np.cos(-theta), np.sin(-theta) # we want the rotation matrix to be the opposite of that angle
             self.frame_rotation = np.array([[c, -s], [s, c]]) # final rotation matrix
-            print(self.frame_rotation)
+            #print(self.frame_rotation)
         else:
             theta = np.radians(yaw)
             self.our_rotation = self.frame_rotation @ np.array([[np.cos(theta)], [np.sin(theta)]])
             curr_theta = np.arctan2(self.our_rotation[1], self.our_rotation[0])
-            print(f"current rotation: {curr_theta}")
+            #print(f"current rotation: {curr_theta}")
 
     def grip_pickup(self):
             
@@ -255,27 +257,30 @@ class Robot():
         err_x = self.our_position[0] - desired_x
         err_y = self.our_position[1] - desired_y
 
-        while abs(err_x) > self.DIST_THRESH_X or abs(err_y) > self.DIST_THRESH_Y:
+        if abs(err_x) > DIST_THRESH_X or abs(err_y) > DIST_THRESH_Y:
             
             err_x = self.our_position[0] - desired_x
             err_y = self.our_position[1] - desired_y
             
-            print(f'Error: {err_x} {err_y}')
-            
             velo_x = 0.0
             velo_y = 0.0
             
-            if abs(err_x) > self.DIST_THRESH_X:
-                velo_x = -math.copysign(2.0, err_x)
+            if abs(err_x) > DIST_THRESH_X:
+                velo_x = -math.copysign(0.75, err_x)
                 
-            if abs(err_y) > self.DIST_THRESH_Y:
-                velo_y = -math.copysign(2.0, err_y)
+            if abs(err_y) > DIST_THRESH_Y:
+                velo_y = math.copysign(0.75, err_y)
+                
+            print(f'Error: {err_x} {err_y} \t Velos: {velo_x} {velo_y}')
             
             self.ep_chassis.drive_speed(x=velo_x, y=velo_y, z=0.0, timeout=5)
             time.sleep(0.1)
             
-        self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-        return 1
+            return 0
+        else:
+            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+            self.curr_state = "DONE"
+            return 1
     
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -348,22 +353,28 @@ if __name__ == "__main__":
         
         if state_done_flag:
             # todo get new action
+            print("done flag true")
+            break
             state_done_flag = False
         
+        
+        fr = None
         if _robot.curr_state == "MOVE_LEFTMOST_BLOCK":
             fr, ret = _robot.move_to_leftmost_block(frame)
         elif _robot.curr_state == "GRIP_PICKUP":
             _robot.grip_pickup()
+        elif _robot.curr_state == "MOVE_CLOSET":
+            _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1])
         elif _robot.curr_state == "DONE":
             state_done_flag = True
-        #_robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1])
         
         
         # fr, ret = _robot.move_to_leftmost_block(frame)
         # if ret == 1:
         #     break
 
-        cv2.imshow("img", fr)
+        if fr is not None:
+            cv2.imshow("img", fr)
 
     _robot.ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
     ep_robot.close()
