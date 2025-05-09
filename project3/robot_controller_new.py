@@ -6,6 +6,7 @@ from map_controller import *
 from ibvs_controller import *
 from state import *
 from agents import *
+from ApriltagDetector import *
 
 import cv2
 from robomaster import robot
@@ -27,6 +28,7 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
+APRILTAG_CLOSE_TRESH = 0.1 #TODO update
 
 FEET_TO_METER_DIV_BY = 3.281
 
@@ -69,11 +71,15 @@ class Robot():
 
         # vision controller
         self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
+        K = np.array([[314, 0, 320], [0, 314, 180], [0, 0, 1]]) # Camera focal length and center pixel
+        marker_size_m = 0.153 # Size of the AprilTag in meters
+        self.apriltag_detector = AprilTagDetector(K, threads=2, marker_size_m=marker_size_m)
 
         # minimax agent
         self.minimax_agent = MiniMaxAgent(State(), 2*2)
         self.curr_action = None
         self.curr_state = "DONE"#"MOVE_LEFTMOST_BLOCK"
+        self.prev_state  = "DONE"
 
         # map controller
         #self.map = MapController(ep_robot)
@@ -175,11 +181,7 @@ class Robot():
         if len(detections) == 0:
             self.ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
             return fr, -1
-        else:
-        
-            # TODO determine which detection to follow
-            # blocks are cls = 2, 3, 4
-            
+        else:            
             leftmost = 999
             leftmost_idx = -1
             for i, d in enumerate(detections):
@@ -241,6 +243,7 @@ class Robot():
             if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
             #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
                 print('close to block, transition')
+                self.prev_state = self.curr_state
                 self.curr_state = "GRIP_PICKUP"
                 return fr, 1
             print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
@@ -254,8 +257,6 @@ class Robot():
             self.ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
         else:
         
-            # TODO determine which detection to follow
-            # blocks are cls = 2, 3, 4
             cls, corners, detected_block_lines_hough, depth = detections[0]
                     
             controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
@@ -308,7 +309,12 @@ class Robot():
     '''
     Moves to global position x, y on the map using simple p loop and constant speed
     '''
-    def move_to_xy(self, desired_x, desired_y, desired_heading, final_location):
+    def move_to_xy(self, desired_x, desired_y, desired_heading, final_location, avoid_obstacles=False, frame=None):
+        
+        if avoid_obstacles and frame is None:
+            # could get rid of the bool and just None check to determine if detecting 
+            # but I like the explicivity here just to be safe
+            return -1
         
         err_x_w = self.our_position[0] - desired_x # x error in world frame
         err_y_w = self.our_position[1] - desired_y # y error in world frame
@@ -334,14 +340,41 @@ class Robot():
             self.ep_chassis.drive_speed(x=velo_x_r, y=velo_y_r, z=0.0, timeout=5)
             #time.sleep(0.1)
             
+            if avoid_obstacles:
+                fr, detections = self.vision.get_yolo_pred(frame, hough=True)
+                for i, d in enumerate(detections):
+                    cls, corners, depth, detected_block_lines_hough = d
+                    if cls == 0: # robot detected
+                        intheway = False #TODO determine if its in the way
+                        if intheway:
+                            self.prev_state = self.curr_state
+                            self.curr_state = "AVOID_OBSTACLE"
+                            
+                
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                gray.astype(np.uint8)
+
+                detections = self.apriltag_detector.find_tags(gray)
+                for detection in detections:
+                    t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
+                    distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+                    if distance < APRILTAG_CLOSE_TRESH:
+                        self.prev_state = self.curr_state
+                        self.curr_state = "AVOID_OBSTACLE"
+            
             return 1
         else:
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             time.sleep(0.1)
             self.ep_chassis.move(x=0, y=0, z=int(np.rad2deg(self.curr_theta) - desired_heading), z_speed=45).wait_for_completed()
             self.minimax_agent.curr_state.our_position = final_location
+            self.prev_state = self.curr_state
             self.curr_state = "UPDATE_STATE"
             return 0
+        
+    #TODO implement
+    def avoid_obstacle():
+        pass
     
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -416,7 +449,7 @@ if __name__ == "__main__":
         elif _robot.curr_state == "GRIP_PICKUP":
             _robot.grip_pickup()
         elif _robot.curr_state == "MOVE_OUR_CLOSET":
-            ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 90, "OUR_CLOSET")
+            ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 90, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_OUR_ROOM":
             ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 0, "OUR_ROOM")
         elif _robot.curr_state == "MOVE_HALLWAY":
@@ -425,6 +458,8 @@ if __name__ == "__main__":
             ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -90, "THEIR_ROOM")
         elif _robot.curr_state == "MOVE_THEIR_CLOSET":
             ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], -90, "THEIR_CLOSET")
+        elif _robot.curr_state == "AVOID_OBSTACLE":
+            ret = _robot.avoid_obstacle()
         elif _robot.curr_state == "UPDATE_STATE":
             fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.our_position)
         elif _robot.curr_state == "DONE":
