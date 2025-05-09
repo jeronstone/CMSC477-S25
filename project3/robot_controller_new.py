@@ -28,7 +28,7 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
-APRILTAG_CLOSE_TRESH = 0.1 #TODO update
+APRILTAG_CLOSE_TRESH = 0.25
 
 FEET_TO_METER_DIV_BY = 3.281
 
@@ -341,26 +341,35 @@ class Robot():
             #time.sleep(0.1)
             
             if avoid_obstacles:
+                print("detecing obstacles to avoid...")
                 fr, detections = self.vision.get_yolo_pred(frame, hough=True)
                 for i, d in enumerate(detections):
                     cls, corners, depth, detected_block_lines_hough = d
                     if cls == 0: # robot detected
-                        intheway = False #TODO determine if its in the way
+                        
+                        #TODO determine if its in the way
+                        # we can probably use depth? and just sub out the length to be the robots size?
+                        intheway = False 
                         if intheway:
+                            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                             self.prev_state = self.curr_state
-                            self.curr_state = "AVOID_OBSTACLE"
-                            
+                            self.curr_state = "AVOID_OBSTACLE_ROBOT"
+                            return 0
                 
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 gray.astype(np.uint8)
 
                 detections = self.apriltag_detector.find_tags(gray)
+                print(f"apriltag detector detected: {len(detections)} apriltags")
                 for detection in detections:
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
                     distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+                    print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
+                        self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                         self.prev_state = self.curr_state
-                        self.curr_state = "AVOID_OBSTACLE"
+                        self.curr_state = "AVOID_OBSTACLE_APRILTAG"
+                        return 0
             
             return 1
         else:
@@ -372,9 +381,33 @@ class Robot():
             self.curr_state = "UPDATE_STATE"
             return 0
         
-    #TODO implement
-    def avoid_obstacle():
-        pass
+    def avoid_obstacle(self, object, frame):
+        print(f'Avoiding an {object}')
+        if object == "APRILTAG":
+            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+            
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray.astype(np.uint8)
+
+            detections = self.apriltag_detector.find_tags(gray)
+            
+            if len(detections) != 0:
+                for detection in detections:
+                    t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
+                    distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+                    print(f'Apriltag dist: {distance}')
+                    if distance < APRILTAG_CLOSE_TRESH:
+                        print("There's an Apriltag thats too close still")
+                        return 1
+            
+            print("Obstacle avoided")
+            # at this point, all detections were greater than thresh, or there were 0 detections
+            self.curr_state = self.prev_state
+            return 0
+                
+        elif object == "ROBOT":
+            pass
+                    
     
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -458,8 +491,10 @@ if __name__ == "__main__":
             ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -90, "THEIR_ROOM")
         elif _robot.curr_state == "MOVE_THEIR_CLOSET":
             ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], -90, "THEIR_CLOSET")
-        elif _robot.curr_state == "AVOID_OBSTACLE":
-            ret = _robot.avoid_obstacle()
+        elif _robot.curr_state == "AVOID_OBSTACLE_APRILTAG":
+            ret = _robot.avoid_obstacle("APRILTAG", frame)
+        elif _robot.curr_state == "AVOID_OBSTACLE_ROBOT":
+            ret = _robot.avoid_obstacle("ROBOT", frame)
         elif _robot.curr_state == "UPDATE_STATE":
             fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.our_position)
         elif _robot.curr_state == "DONE":
