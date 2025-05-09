@@ -28,6 +28,28 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
 
+FEET_TO_METER_DIV_BY = 3.281
+
+# location boundaries
+OUR_CLOSET_BOUNDARY = [(10.0/FEET_TO_METER_DIV_BY, 2.0/FEET_TO_METER_DIV_BY), (11.75/FEET_TO_METER_DIV_BY, 5.0/FEET_TO_METER_DIV_BY)]
+OUR_ROOM_BOUNDARY = [(0.25/FEET_TO_METER_DIV_BY, 0.25/FEET_TO_METER_DIV_BY), (10.25/FEET_TO_METER_DIV_BY, 9.25/FEET_TO_METER_DIV_BY)]
+HALLWAY_BOUNDARY = [(4.5/FEET_TO_METER_DIV_BY, 9.25/FEET_TO_METER_DIV_BY), (7.5/FEET_TO_METER_DIV_BY, 11.75/FEET_TO_METER_DIV_BY)]
+THEIR_ROOM_BOUNDARY = [(1.75/FEET_TO_METER_DIV_BY, 11.75/FEET_TO_METER_DIV_BY), (11.75/FEET_TO_METER_DIV_BY, 20.75/FEET_TO_METER_DIV_BY)]
+THEIR_CLOSET_BOUNDARY = [(0.25/FEET_TO_METER_DIV_BY, 16.0/FEET_TO_METER_DIV_BY), (2.0/FEET_TO_METER_DIV_BY, 19.0/FEET_TO_METER_DIV_BY)]
+
+# pickup/dropoff locations
+OUR_CLOSET_PICKUP = (2.72, 1.025)
+OUR_CLOSET_DROPOFF = (3.0, 0.75) # increment y by 0.2 each time we drop off
+OUR_ROOM_MOVE = (2.0, 1.025)
+OUR_ROOM_PICKUP = (2.585, 1.110)
+OUR_ROOM_DROPOFF = (1.5, 2.20) # decrement y by 0.2 each time we drop off
+HALLWAY_MOVE = (2.0, 3.05)
+THEIR_ROOM_MOVE = (2.0, 5.426)
+THEIR_ROOM_PICKUP = (2.142, 5.426)
+THEIR_ROOM_DROPOFF = (2.9, 4.1) # increment y by 0.2 each time we drop off
+THEIR_CLOSET_PICKUP = (2.142, 5.426)
+THEIR_CLOSET_DROPOFF = (1.512, 5.375) # increment y by 0.2 each time we drop off
+
 class Robot():
     def __init__(self, ep_robot):
         # robomaster variables
@@ -40,24 +62,25 @@ class Robot():
         self.ep_led = ep_robot.led
 
         # position/rotation variables
-        self.our_position = (1.0, 1.0)
+        self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
         self.our_rotation = None
+        self.curr_theta = 0.0
         self.frame_rotation = None
-        
-        self.curr_state = "MOVE_CLOSET"#"MOVE_LEFTMOST_BLOCK"
 
         # vision controller
         self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
 
         # minimax agent
         self.minimax_agent = MiniMaxAgent(State(), 2*2)
+        self.curr_action = None
+        self.curr_state = "DONE"#"MOVE_LEFTMOST_BLOCK"
 
         # map controller
         #self.map = MapController(ep_robot)
 
         # IBVS controller
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
-        self.controller.set_lambda_matrix([3.0, 1.25]) # robot y velocity; robot x velocity
+        self.controller.set_lambda_matrix([3.0, 1.0]) # robot y velocity; robot x velocity
         self.controller.set_desired_points([(-0.16, 0.375, 0.18), (0.16, 0.375, 0.18), (-0.16, 0.95, 0.18), (0.16, 0.95, 0.18)])
 
     def chassis_callback(self, pos):
@@ -84,8 +107,39 @@ class Robot():
         else:
             theta = np.radians(yaw)
             self.our_rotation = self.frame_rotation @ np.array([[np.cos(theta)], [np.sin(theta)]])
-            curr_theta = np.arctan2(self.our_rotation[1], self.our_rotation[0])
+            self.curr_theta = np.arctan2(self.our_rotation[1], self.our_rotation[0])
             #print(f"current rotation: {curr_theta}")
+
+    def get_current_location(self):
+        if OUR_CLOSET_BOUNDARY[0][0] <= self.our_position[0] <= OUR_CLOSET_BOUNDARY[1][0] and OUR_CLOSET_BOUNDARY[0][1] <= self.our_position[1] <= OUR_CLOSET_BOUNDARY[1][1]:
+            return "OUR_CLOSET"
+        elif OUR_ROOM_BOUNDARY[0][0] <= self.our_position[0] <= OUR_ROOM_BOUNDARY[1][0] and OUR_ROOM_BOUNDARY[0][1] <= self.our_position[1] <= OUR_ROOM_BOUNDARY[1][1]:
+            return "OUR_ROOM"
+        elif HALLWAY_BOUNDARY[0][0] <= self.our_position[0] <= HALLWAY_BOUNDARY[1][0] and HALLWAY_BOUNDARY[0][1] <= self.our_position[1] <= HALLWAY_BOUNDARY[1][1]:
+            return "HALLWAY"
+        elif THEIR_ROOM_BOUNDARY[0][0] <= self.our_position[0] <= THEIR_ROOM_BOUNDARY[1][0] and THEIR_ROOM_BOUNDARY[0][1] <= self.our_position[1] <= THEIR_ROOM_BOUNDARY[1][1]:
+            return "THEIR_ROOM"
+        elif THEIR_CLOSET_BOUNDARY[0][0] <= self.our_position[0] <= THEIR_CLOSET_BOUNDARY[1][0] and THEIR_CLOSET_BOUNDARY[0][1] <= self.our_position[1] <= THEIR_CLOSET_BOUNDARY[1][1]:
+            return "THEIR_CLOSET"
+        else:
+            return "undef"
+        
+    def update_state_with_detections(self, location):
+
+        fr, detections = self.vision.get_yolo_pred(frame, hough=False)
+
+        if len(detections) > 0:
+            block_list = []
+            for detection in detections:
+                cls, _, _, _ = detection
+                if cls == 0: # enemy robot
+                    self.minimax_agent.curr_state.their_position = location
+                elif 2 <= cls <= 4: # block
+                    block_list.append(("4x4", location))
+            self.minimax_agent.curr_state.block_positions = block_list
+
+        self.curr_state = "DONE"
+        return fr, 0
 
     def grip_pickup(self):
             
@@ -112,13 +166,15 @@ class Robot():
         
         time.sleep(2.0)
 
+        self.curr_state = "DONE"
+
     def move_to_leftmost_block(self, frame):
             
         fr, detections = self.vision.get_yolo_pred(frame, hough=True)
         
         if len(detections) == 0:
             self.ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
-            return fr, 0
+            return fr, -1
         else:
         
             # TODO determine which detection to follow
@@ -252,35 +308,40 @@ class Robot():
     '''
     Moves to global position x, y on the map using simple p loop and constant speed
     '''
-    def move_to_xy(self, desired_x, desired_y):
+    def move_to_xy(self, desired_x, desired_y, desired_heading, final_location):
         
-        err_x = self.our_position[0] - desired_x
-        err_y = self.our_position[1] - desired_y
+        err_x_w = self.our_position[0] - desired_x # x error in world frame
+        err_y_w = self.our_position[1] - desired_y # y error in world frame
 
-        if abs(err_x) > DIST_THRESH_X or abs(err_y) > DIST_THRESH_Y:
+        if abs(err_x_w) > DIST_THRESH_X or abs(err_y_w) > DIST_THRESH_Y:
             
-            err_x = self.our_position[0] - desired_x
-            err_y = self.our_position[1] - desired_y
+            velo_x_w = -0.5 * err_x_w # x vel in world frame
+            velo_y_w = 0.5 * err_y_w # y vel in world frame
             
-            velo_x = 0.0
-            velo_y = 0.0
-            
-            if abs(err_x) > DIST_THRESH_X:
-                velo_x = -math.copysign(0.75, err_x)
+            # if abs(err_x_w) > DIST_THRESH_X:
+            #     velo_x_w = -math.copysign(0.4, err_x_w)
                 
-            if abs(err_y) > DIST_THRESH_Y:
-                velo_y = math.copysign(0.75, err_y)
+            # if abs(err_y_w) > DIST_THRESH_Y:
+            #     velo_y_w = math.copysign(0.4, err_y_w)
                 
-            print(f'Error: {err_x} {err_y} \t Velos: {velo_x} {velo_y}')
+            print(f'Error: {err_x_w} {err_y_w} \t Velos: {velo_x_w} {velo_y_w}')
+
+            velos_r = self.frame_rotation @ np.array([[float(velo_x_w)], [float(velo_y_w)]])
+
+            velo_x_r = clamp(velos_r.item(0), ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
+            velo_y_r = clamp(velos_r.item(1), ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
             
-            self.ep_chassis.drive_speed(x=velo_x, y=velo_y, z=0.0, timeout=5)
-            time.sleep(0.1)
+            self.ep_chassis.drive_speed(x=velo_x_r, y=velo_y_r, z=0.0, timeout=5)
+            #time.sleep(0.1)
             
-            return 0
+            return 1
         else:
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-            self.curr_state = "DONE"
-            return 1
+            time.sleep(0.1)
+            self.ep_chassis.move(x=0, y=0, z=int(np.rad2deg(self.curr_theta) - desired_heading), z_speed=45).wait_for_completed()
+            self.minimax_agent.curr_state.our_position = final_location
+            self.curr_state = "UPDATE_STATE"
+            return 0
     
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -323,48 +384,49 @@ if __name__ == "__main__":
         #                     color=(0, 0, 255), thickness=2)
                 
         #         cv2.putText(frame, class_label, (int(xyxy[0]), int(xyxy[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        # update state based on observations
 
-        
-        key = cv2.waitKey(1)
-        if key == ord('w'):
-            x_vel += 0.1
-        elif key == ord('s'):
-            x_vel -= 0.1
-        elif key == ord('a'):
-            y_vel -= 0.1
-        elif key == ord('d'):
-            y_vel += 0.1
-        elif key == ord('q'):
-            z_vel -= 5.0
-        elif key == ord('e'):
-            z_vel += 5.0
-        elif key == ord(' '):
-            x_vel = 0.0
-            y_vel = 0.0
-            z_vel = 0.0
-        elif key == ord('z'):
-            break
-        
-        led_red = clamp(int(abs(x_vel) * 128), 0, 255)
-        led_green = clamp(int(abs(y_vel) * 128), 0, 255)
-        led_blue = clamp(int(abs(z_vel) * 10), 0, 255)
-        # _robot.ep_chassis.drive_speed(x=x_vel, y=y_vel, z=z_vel, timeout=5)
-        ep_led.set_led(comp='all', r=led_red, g=led_green, b=led_blue, effect='on')
-        
         if state_done_flag:
-            # todo get new action
             print("done flag true")
-            break
             state_done_flag = False
+            _robot.minimax_agent.perform_action(_robot.curr_action)
+            _robot.curr_action = _robot.minimax_agent.choose_action()
+            if _robot.curr_action == Action.PICKUP_BLOCK_2x2 or _robot.curr_action == Action.PICKUP_BLOCK_2x4 or _robot.curr_action == Action.PICKUP_BLOCK_4x4:
+                _robot.curr_state = "MOVE_LEFTMOST_BLOCK"
+            elif _robot.curr_action == Action.DROP_BLOCK:
+                _robot.curr_state = "GRIP_DROP"
+            elif _robot.curr_action == Action.MOVE_OUR_CLOSET:
+                _robot.curr_state = "MOVE_OUR_CLOSET"
+            elif _robot.curr_action == Action.MOVE_OUR_ROOM:
+                _robot.curr_state = "MOVE_OUR_ROOM"
+            elif _robot.curr_action == Action.MOVE_HALLWAY:
+                _robot.curr_state = "MOVE_HALLWAY"
+            elif _robot.curr_action == Action.MOVE_THEIR_ROOM:
+                _robot.curr_state = "MOVE_THEIR_ROOM"
+            elif _robot.curr_action == Action.MOVE_THEIR_CLOSET:
+                _robot.curr_state = "MOVE_THEIR_CLOSET"
+            else:
+                _robot.curr_state = "DONE"
         
-        
+        print(f"curr state: {_robot.curr_state}")
         fr = None
         if _robot.curr_state == "MOVE_LEFTMOST_BLOCK":
             fr, ret = _robot.move_to_leftmost_block(frame)
         elif _robot.curr_state == "GRIP_PICKUP":
             _robot.grip_pickup()
-        elif _robot.curr_state == "MOVE_CLOSET":
-            _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1])
+        elif _robot.curr_state == "MOVE_OUR_CLOSET":
+            ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 90, "OUR_CLOSET")
+        elif _robot.curr_state == "MOVE_OUR_ROOM":
+            ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 0, "OUR_ROOM")
+        elif _robot.curr_state == "MOVE_HALLWAY":
+            ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 0, "HALLWAY")
+        elif _robot.curr_state == "MOVE_THEIR_ROOM":
+            ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -90, "THEIR_ROOM")
+        elif _robot.curr_state == "MOVE_THEIR_CLOSET":
+            ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], -90, "THEIR_CLOSET")
+        elif _robot.curr_state == "UPDATE_STATE":
+            fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.our_position)
         elif _robot.curr_state == "DONE":
             state_done_flag = True
         
@@ -375,6 +437,9 @@ if __name__ == "__main__":
 
         if fr is not None:
             cv2.imshow("img", fr)
+            key = cv2.waitKey(1)
+            if key == ord('z'):
+                break
 
     _robot.ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
     ep_robot.close()

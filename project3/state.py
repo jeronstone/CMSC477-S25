@@ -9,7 +9,8 @@ class State():
         self.their_position = "THEIR_ROOM"
         self.our_held_block = None
         self.their_held_block = None
-        self.block_positions = [("2x2", "OUR_CLOSET"), ("2x4", "OUR_CLOSET"), ("4x4", "OUR_CLOSET"), ("2x2", "THEIR_CLOSET"), ("2x4", "THEIR_CLOSET"), ("4x4", "THEIR_CLOSET")]
+        #self.block_positions = [("2x2", "OUR_CLOSET"), ("2x4", "OUR_CLOSET"), ("4x4", "OUR_CLOSET"), ("2x2", "THEIR_CLOSET"), ("2x4", "THEIR_CLOSET"), ("4x4", "THEIR_CLOSET")]
+        self.block_positions = [("4x4", "OUR_CLOSET"), ("4x4", "OUR_CLOSET"), ("4x4", "OUR_CLOSET"), ("4x4", "THEIR_CLOSET"), ("4x4", "THEIR_CLOSET"), ("4x4", "THEIR_CLOSET")]
         self.current_score = None
         self.update_and_get_score()
 
