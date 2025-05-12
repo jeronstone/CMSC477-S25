@@ -72,9 +72,9 @@ class Robot():
 
         # position/rotation variables
         self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
-        self.our_rotation = None
-        self.curr_theta = 0.0
-        self.frame_rotation = None
+        self.our_heading = 0.0
+        self.T_wa = None
+        self.initial_heading_error = 0.0
 
         # vision controller
         self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
@@ -97,19 +97,11 @@ class Robot():
         self.controller.set_desired_points([(-0.16, 0.375, 0.18), (0.16, 0.375, 0.18), (-0.16, 0.95, 0.18), (0.16, 0.95, 0.18)])
 
     def chassis_callback(self, pos):
-        x, y, z = pos
-        
-        # print(f"x: {x} y: {y} z: {z}")
-        # self.our_position = (float(x)+1.0, -float(y-1.0))
-        #self.our_position = (float(y), float(x))
-        if self.frame_rotation is None: # if we don't have a frame rotation yet, just assume we haven't moved
+        x, y, _ = pos
+        if self.initial_heading_error is None:
             self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
         else:
-            rotated_xy = self.frame_rotation @ np.array([[float(x)], [float(y)]])
-            self.our_position = (rotated_xy[1][0] + 3.0/FEET_TO_METER_DIV_BY, rotated_xy[0][0] + 3.0/FEET_TO_METER_DIV_BY)
-            position_history_x.append(self.our_position[0])
-            position_history_y.append(self.our_position[1])
-        
+            self.our_position = self.T_wa @ np.array([[x], [-y], [0], [1]])
         #print(f"current position: {self.our_position}")
         #print(self.get_current_location())
         
@@ -119,16 +111,15 @@ class Robot():
         self.frame_rotation = np.array([[c, -s], [s, c]]) # final rotation matrix
 
     def attitude_callback(self, pos):
-        yaw, pitch, roll = pos
-        self.prev_yaw = yaw
-        if self.frame_rotation is None: # the first time we read the attitude, our yaw should be +90 in the global robot frame (which means it should point in +x in our frame). Create the rotation matrix from this initial angle reading
-            self.set_frame_rotation(90)
-            #print(self.frame_rotation)
-        else:
-            theta = np.radians(yaw)
-            self.our_rotation = self.frame_rotation @ np.array([[np.cos(theta)], [np.sin(theta)]])
-            self.curr_theta = np.arctan2(self.our_rotation[1], self.our_rotation[0])
-            #print(f"current rotation: {curr_theta}")
+        yaw, _, _ = pos
+        if self.initial_heading_error is None: # the first time we read the attitude, our yaw should be 0 in the global robot frame (which means it should point in +x in our frame). Create the transformation matrix from this initial angle reading
+            self.initial_heading_error = -yaw # we want to be at heading 0, so if we are at heading -10 for example, then we need to add 10 to all future readings
+            theta = yaw + self.initial_heading_error
+            c, s = np.cos(-theta), np.sin(-theta)
+            self.T_wa = np.array([[c, -s, 0, 3.0/FEET_TO_METER_DIV_BY],
+                                  [s,  c, 0, 3.0/FEET_TO_METER_DIV_BY],
+                                  [0,  0, 1,                        0],
+                                  [0,  0, 0,                        1]])
 
     def get_current_location(self):
         if OUR_CLOSET_BOUNDARY[0][0] <= self.our_position[0] <= OUR_CLOSET_BOUNDARY[1][0] and OUR_CLOSET_BOUNDARY[0][1] <= self.our_position[1] <= OUR_CLOSET_BOUNDARY[1][1]:
