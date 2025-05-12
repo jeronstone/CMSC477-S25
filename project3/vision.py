@@ -12,7 +12,7 @@ class Vision():
     @param hough (default False): true if perform hough on detections
     @return 3 tuple corners, depth, hough (none if @param hough=False)
     '''
-    def get_yolo_pred(self, frame, hough=False):
+    def get_yolo_pred(self, frame, hough=False, depth_len=0.064):
 
         clean_frame = frame.copy()
         
@@ -57,11 +57,12 @@ class Vision():
                     detected_block_lines_hough = cv2.HoughLinesP(detected_block_lines, 1, np.pi / 180, 25, None, 20, 1)
                     # print(detected_block_lines_hough) 
                 
-                    depth = (0.064*314.0)/(int(xyxy[2])-int(xyxy[0])) # actual block length is 0.158 meters; however, in the worst case, we will only see around 0.1 meters of the block, so use that as the depth. this means we underestimate the depth at every iteration
+                    depth = (depth_len*314.0)/(int(xyxy[2])-int(xyxy[0])) # actual block length is 0.158 meters; however, in the worst case, we will only see around 0.1 meters of the block, so use that as the depth. this means we underestimate the depth at every iteration
 
                     detections.append((cls, corners, depth, detected_block_lines_hough))
                 else:
-                    depth = (0.2*314.0)/(int(xyxy[2])-int(xyxy[0]))
+                    depth_len=0.2
+                    depth = (depth_len*314.0)/(int(xyxy[2])-int(xyxy[0]))
                     detections.append((cls, corners, depth, None))
                 
         return frame, detections

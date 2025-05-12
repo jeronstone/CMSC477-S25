@@ -8,6 +8,7 @@ from state import *
 from agents import *
 from ApriltagDetector import *
 
+import matplotlib.pyplot as plt
 import cv2
 from robomaster import robot
 from robomaster import camera
@@ -29,8 +30,11 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
 APRILTAG_CLOSE_TRESH = 0.25
+ROBOT_CLOSE_THRESH = 0.2
 
 FEET_TO_METER_DIV_BY = 3.281
+
+ROBOT_SIZE_EST = 0.25 #23 cm width, give it +2cm if its kinda sideways
 
 # location boundaries
 OUR_CLOSET_BOUNDARY = [(10.0/FEET_TO_METER_DIV_BY, 2.0/FEET_TO_METER_DIV_BY), (11.75/FEET_TO_METER_DIV_BY, 5.0/FEET_TO_METER_DIV_BY)]
@@ -51,6 +55,9 @@ THEIR_ROOM_PICKUP = (2.142, 5.426)
 THEIR_ROOM_DROPOFF = (2.9, 4.1) # increment y by 0.2 each time we drop off
 THEIR_CLOSET_PICKUP = (2.142, 5.426)
 THEIR_CLOSET_DROPOFF = (1.512, 5.375) # increment y by 0.2 each time we drop off
+
+position_history_x = []
+position_history_y = []
 
 class Robot():
     def __init__(self, ep_robot):
@@ -91,6 +98,7 @@ class Robot():
 
     def chassis_callback(self, pos):
         x, y, z = pos
+        
         # print(f"x: {x} y: {y} z: {z}")
         # self.our_position = (float(x)+1.0, -float(y-1.0))
         #self.our_position = (float(y), float(x))
@@ -99,16 +107,22 @@ class Robot():
         else:
             rotated_xy = self.frame_rotation @ np.array([[float(x)], [float(y)]])
             self.our_position = (rotated_xy[1][0] + 3.0/FEET_TO_METER_DIV_BY, rotated_xy[0][0] + 3.0/FEET_TO_METER_DIV_BY)
+            position_history_x.append(self.our_position[0])
+            position_history_y.append(self.our_position[1])
         
         #print(f"current position: {self.our_position}")
         #print(self.get_current_location())
+        
+    def set_frame_rotation(self, desired_heading):
+        theta = np.radians(self.prev_yaw - desired_heading) # how offset we are from +90
+        c, s = np.cos(-theta), np.sin(-theta) # we want the rotation matrix to be the opposite of that angle
+        self.frame_rotation = np.array([[c, -s], [s, c]]) # final rotation matrix
 
     def attitude_callback(self, pos):
         yaw, pitch, roll = pos
+        self.prev_yaw = yaw
         if self.frame_rotation is None: # the first time we read the attitude, our yaw should be +90 in the global robot frame (which means it should point in +x in our frame). Create the rotation matrix from this initial angle reading
-            theta = np.radians(yaw - 90) # how offset we are from +90
-            c, s = np.cos(-theta), np.sin(-theta) # we want the rotation matrix to be the opposite of that angle
-            self.frame_rotation = np.array([[c, -s], [s, c]]) # final rotation matrix
+            self.set_frame_rotation(90)
             #print(self.frame_rotation)
         else:
             theta = np.radians(yaw)
@@ -135,7 +149,7 @@ class Robot():
         fr, detections = self.vision.get_yolo_pred(frame, hough=False)
 
         if len(detections) > 0:
-            block_list = []
+            block_list = [block for block in self.minimax_agent.curr_state.block_positions if block[1] != location]
             for detection in detections:
                 cls, _, _, _ = detection
                 if cls == 0: # enemy robot
@@ -166,7 +180,7 @@ class Robot():
         self.ep_arm.moveto(x=200, y=-50).wait_for_completed(2.0)
         time.sleep(2.0)
         
-        self.ep_gripper.open(power=50)
+        self.ep_gripper.open(power=125)
         time.sleep(1.0)
         self.ep_gripper.pause()
         
@@ -314,7 +328,7 @@ class Robot():
         if avoid_obstacles and frame is None:
             # could get rid of the bool and just None check to determine if detecting 
             # but I like the explicivity here just to be safe
-            return -1
+            return None, -1
         
         err_x_w = self.our_position[0] - desired_x # x error in world frame
         err_y_w = self.our_position[1] - desired_y # y error in world frame
@@ -342,19 +356,16 @@ class Robot():
             
             if avoid_obstacles:
                 print("detecing obstacles to avoid...")
-                fr, detections = self.vision.get_yolo_pred(frame, hough=True)
+                fr, detections = self.vision.get_yolo_pred(frame, hough=False, depth_len=ROBOT_SIZE_EST)
                 for i, d in enumerate(detections):
                     cls, corners, depth, detected_block_lines_hough = d
                     if cls == 0: # robot detected
-                        
-                        #TODO determine if its in the way
-                        # we can probably use depth? and just sub out the length to be the robots size?
-                        intheway = False 
+                        intheway = (depth > ROBOT_CLOSE_THRESH)
                         if intheway:
                             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                             self.prev_state = self.curr_state
                             self.curr_state = "AVOID_OBSTACLE_ROBOT"
-                            return 0
+                            return fr, 0
                 
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 gray.astype(np.uint8)
@@ -369,20 +380,22 @@ class Robot():
                         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                         self.prev_state = self.curr_state
                         self.curr_state = "AVOID_OBSTACLE_APRILTAG"
-                        return 0
+                        return fr, 0
             
-            return 1
+            return None, 1
         else:
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             time.sleep(0.1)
-            self.ep_chassis.move(x=0, y=0, z=int(np.rad2deg(self.curr_theta) - desired_heading), z_speed=45).wait_for_completed()
+            self.ep_chassis.move(x=0, y=0, z=int(np.rad2deg(self.curr_theta) - desired_heading), z_speed=45).wait_for_completed(2.0)
+            time.sleep(2.0)
+            self.set_frame_rotation(desired_heading)
             self.minimax_agent.curr_state.our_position = final_location
             self.prev_state = self.curr_state
             self.curr_state = "UPDATE_STATE"
-            return 0
+            return None, 0
         
     def avoid_obstacle(self, object, frame):
-        print(f'Avoiding an {object}')
+        print(f'Avoiding {object}')
         if object == "APRILTAG":
             self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
             
@@ -406,8 +419,19 @@ class Robot():
             return 0
                 
         elif object == "ROBOT":
-            pass
-                    
+            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+            fr, detections = self.vision.get_yolo_pred(frame, hough=False, depth_len=ROBOT_SIZE_EST)
+            for i, d in enumerate(detections):
+                cls, corners, depth, detected_block_lines_hough = d
+                if cls == 0: # robot detected
+                    intheway = (depth > ROBOT_CLOSE_THRESH)
+                    if intheway:
+                        print("Theres a robot thats too close still")
+                        return 1
+            
+            print("Obstacle avoided")
+            self.curr_state = self.prev_state
+            return 0
     
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -420,6 +444,10 @@ if __name__ == "__main__":
     x_vel = 0.0
     y_vel = 0.0
     z_vel = 0.0
+    
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 4)
+    ax.set_ylim(0, 7)
     
     state_done_flag = False
         
@@ -452,6 +480,11 @@ if __name__ == "__main__":
         #         cv2.putText(frame, class_label, (int(xyxy[0]), int(xyxy[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
         # update state based on observations
+        
+        if frame is None:
+            time.sleep(0.1)
+            continue
+        
 
         if state_done_flag:
             print("done flag true")
@@ -482,15 +515,15 @@ if __name__ == "__main__":
         elif _robot.curr_state == "GRIP_PICKUP":
             _robot.grip_pickup()
         elif _robot.curr_state == "MOVE_OUR_CLOSET":
-            ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 90, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
+            fr, ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 90, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_OUR_ROOM":
-            ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 0, "OUR_ROOM")
+            fr, ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 0, "OUR_ROOM")
         elif _robot.curr_state == "MOVE_HALLWAY":
-            ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 0, "HALLWAY")
+            fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 0, "HALLWAY")
         elif _robot.curr_state == "MOVE_THEIR_ROOM":
-            ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -90, "THEIR_ROOM")
+            fr, ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -90, "THEIR_ROOM")
         elif _robot.curr_state == "MOVE_THEIR_CLOSET":
-            ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], -90, "THEIR_CLOSET")
+            fr, ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], -90, "THEIR_CLOSET")
         elif _robot.curr_state == "AVOID_OBSTACLE_APRILTAG":
             ret = _robot.avoid_obstacle("APRILTAG", frame)
         elif _robot.curr_state == "AVOID_OBSTACLE_ROBOT":
@@ -504,6 +537,10 @@ if __name__ == "__main__":
         # fr, ret = _robot.move_to_leftmost_block(frame)
         # if ret == 1:
         #     break
+        
+        ax.plot(position_history_x, position_history_y) 
+        plt.draw()
+        plt.pause(0.01)
 
         if fr is not None:
             cv2.imshow("img", fr)
