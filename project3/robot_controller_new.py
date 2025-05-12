@@ -397,7 +397,6 @@ class Robot():
     def avoid_obstacle(self, object, frame):
         print(f'Avoiding {object}')
         if object == "APRILTAG":
-            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
             
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray.astype(np.uint8)
@@ -411,10 +410,22 @@ class Robot():
                     print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
                         print("There's an Apriltag thats too close still")
+                        
+                        pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
+                        top_left = tuple(pts[0][0])  # First corner
+                        # top_right = tuple(pts[1][0])  # Second corner
+                        # bottom_right = tuple(pts[2][0])  # Third corner
+                        # bottom_left = tuple(pts[3][0])  # Fourth corner
+                        if top_left > 0:    # right side, move left
+                            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                        else:               # left side, move right
+                            self.ep_chassis.drive_speed(x=0.0, y=0.5, z=0.0, timeout=5)
+                        
                         return 1
             
             print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
+            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             self.curr_state = self.prev_state
             return 0
                 
@@ -427,9 +438,16 @@ class Robot():
                     intheway = (depth > ROBOT_CLOSE_THRESH)
                     if intheway:
                         print("Theres a robot thats too close still")
+                        
+                        if corners[0] > 0:  # right side, move left
+                            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                        else:               # left side, move right
+                            self.ep_chassis.drive_speed(x=0.0, y=0.5, z=0.0, timeout=5)
+                        
                         return 1
             
             print("Obstacle avoided")
+            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             self.curr_state = self.prev_state
             return 0
     
