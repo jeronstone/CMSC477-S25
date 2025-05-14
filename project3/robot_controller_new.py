@@ -53,7 +53,7 @@ HALLWAY_MOVE = (1.96, 3.28)
 THEIR_ROOM_MOVE = (1.96, 5.50)
 THEIR_ROOM_PICKUP = (2.142, 5.426)
 THEIR_ROOM_DROPOFF = (2.9, 4.1) # increment y by 0.2 each time we drop off
-THEIR_CLOSET_PICKUP = (1.23, 5.37)
+THEIR_CLOSET_PICKUP = (0.72, 5.37)
 THEIR_CLOSET_DROPOFF = (1.512, 5.375) # increment y by 0.2 each time we drop off
 
 position_history_x = []
@@ -109,7 +109,7 @@ class Robot():
 
         # IBVS controller
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
-        self.controller.set_lambda_matrix([3.0, 1.0]) # robot y velocity; robot x velocity
+        self.controller.set_lambda_matrix([1.75, 0.5]) # robot y velocity; robot x velocity
         self.controller.set_desired_points([(-0.16, 0.375, 0.18), (0.16, 0.375, 0.18), (-0.16, 0.95, 0.18), (0.16, 0.95, 0.18)])
         
         self.ep_arm.moveto(x=200, y=-25).wait_for_completed()
@@ -147,7 +147,7 @@ class Robot():
                 # print(f"T_w_bt: {T_w_bt}")
                 self.world_position = (self.T_w_bt[0, 3], self.T_w_bt[1, 3])
                 self.world_heading = np.arctan2(self.T_w_bt[1, 0], self.T_w_bt[0, 0])
-                print(f"world position: {self.world_position}; world heading: {self.world_heading}")
+                # print(f"world position: {self.world_position}; world heading: {self.world_heading}")
                 position_history_x.append(self.world_position[0])
                 position_history_y.append(self.world_position[1])
             #print(f"current position: {self.world_position}")
@@ -234,7 +234,7 @@ class Robot():
                         leftmost_idx = i
                         
             if leftmost_idx == -1:
-                print(f'No leftmost block detected')
+                # print(f'No leftmost block detected')
                 self.ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
                 return fr, -1
             
@@ -284,11 +284,11 @@ class Robot():
             err_nrm = np.linalg.norm(self.controller.errs)
             if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
             #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
-                print('close to block, transition')
+                # print('close to block, transition')
                 self.prev_state = self.curr_state
                 self.curr_state = "GRIP_PICKUP"
                 return fr, 1
-            print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+            # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
             return fr, 0
         
     def move_to_block(self, frame):
@@ -345,8 +345,9 @@ class Robot():
             err_nrm = np.linalg.norm(controller.errs)
             if depth < 0.19 and err_nrm < 0.16 and abs(most_horizontal_angle) < 0.05: # within 20 cm of camera, errors in point positions less than 0.125 normalized image distance, and most horizontal angle in block is within 0.05 radians
             #if corners[1] > 0.06 and corners[3] > 0.95 and corners[0] > -0.2 and corners[2] < 0.2:
-                print('close to block, transition')
-            print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+                # print('close to block, transition')
+            # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
+                pass
     
     '''
     Moves to global position x, y on the map using simple p loop and constant speed
@@ -372,7 +373,7 @@ class Robot():
             # if abs(err_y_w) > DIST_THRESH_Y:
             #     velo_y_w = math.copysign(0.4, err_y_w)
                 
-            print(f'Error: {err_x_w} {err_y_w} \t Velos: {velo_x_w} {velo_y_w}')
+            # print(f'Error: {err_x_w} {err_y_w} \t Velos: {velo_x_w} {velo_y_w}')
 
             #velos_r = self.frame_rotation @ np.array([[float(velo_x_w)], [float(velo_y_w)]])
 
@@ -401,7 +402,7 @@ class Robot():
                 for i, d in enumerate(detections):
                     cls, corners, depth, detected_block_lines_hough = d
                     if cls == 0: # robot detected
-                        print(f'ROBOT DEPTH: {depth}')
+                        # print(f'ROBOT DEPTH: {depth}')
                         intheway = (depth < ROBOT_CLOSE_THRESH)
                         if intheway:
                             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
@@ -413,11 +414,11 @@ class Robot():
                 gray.astype(np.uint8)
 
                 detections = self.apriltag_detector.find_tags(gray)
-                print(f"apriltag detector detected: {len(detections)} apriltags")
+                # print(f"apriltag detector detected: {len(detections)} apriltags")
                 for detection in detections:
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
                     distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
-                    print(f'Apriltag dist: {distance}')
+                    # print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
                         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                         self.prev_state = self.curr_state
@@ -437,7 +438,7 @@ class Robot():
             return None, 0
         
     def avoid_obstacle(self, object, frame):
-        print(f'Avoiding {object}')
+        # print(f'Avoiding {object}')
         if object == "APRILTAG":
             
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -449,9 +450,9 @@ class Robot():
                 for detection in detections:
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
                     distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
-                    print(f'Apriltag dist: {distance}')
+                    # print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
-                        print("There's an Apriltag thats too close still")
+                        # print("There's an Apriltag thats too close still")
                         
                         pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
                         top_left = tuple(pts[0][0])  # First corner
@@ -465,7 +466,7 @@ class Robot():
                         
                         return 1
             
-            print("Obstacle avoided")
+            # print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             self.curr_state = self.prev_state
@@ -479,7 +480,7 @@ class Robot():
                 if cls == 0: # robot detected
                     intheway = (depth < ROBOT_CLOSE_THRESH)
                     if intheway:
-                        print("Theres a robot thats too close still")
+                        # print("Theres a robot thats too close still")
                         
                         if corners[0] > 0:  # right side, move left
                             self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
@@ -488,7 +489,7 @@ class Robot():
                         
                         return 1
             
-            print("Obstacle avoided")
+            # print("Obstacle avoided")
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             self.curr_state = self.prev_state
             return 0
@@ -498,7 +499,7 @@ class Robot():
                 self.ep_chassis.drive_speed(x=0.0, y=-0.3, z=0.0, timeout=5)
                 return 1
             else:
-                print("Obstacle avoided")
+                # print("Obstacle avoided")
                 self.curr_state = self.prev_state
                 self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                 return 0
@@ -561,6 +562,7 @@ if __name__ == "__main__":
             state_done_flag = False
             _robot.minimax_agent.perform_action(_robot.curr_action)
             _robot.curr_action = _robot.minimax_agent.choose_action()
+            print(f"new action: {_robot.curr_action}")
             if _robot.curr_action == Action.PICKUP_BLOCK_2x2 or _robot.curr_action == Action.PICKUP_BLOCK_2x4 or _robot.curr_action == Action.PICKUP_BLOCK_4x4:
                 _robot.curr_state = "MOVE_LEFTMOST_BLOCK"
                 _robot.ep_arm.moveto(x=200, y=-50).wait_for_completed()
@@ -586,12 +588,14 @@ if __name__ == "__main__":
             else:
                 _robot.curr_state = "DONE"
         
-        print(f"curr state: {_robot.curr_state}")
+        # print(f"curr state: {_robot.curr_state}")
         fr = None
         if _robot.curr_state == "MOVE_LEFTMOST_BLOCK":
             fr, ret = _robot.move_to_leftmost_block(frame)
         elif _robot.curr_state == "GRIP_PICKUP":
             _robot.grip_pickup()
+        elif _robot.curr_state == "GRIP_DROP":
+            _robot.grip_drop()
         elif _robot.curr_state == "MOVE_OUR_CLOSET":
             fr, ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 0, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_OUR_ROOM":
@@ -599,7 +603,7 @@ if __name__ == "__main__":
         elif _robot.curr_state == "MOVE_HALLWAY":
             fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 90, "HALLWAY")
         elif _robot.curr_state == "MOVE_THEIR_ROOM":
-            fr, ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], 180, "THEIR_ROOM")
+            fr, ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -179, "THEIR_ROOM")
         elif _robot.curr_state == "MOVE_THEIR_CLOSET":
             fr, ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], 180, "THEIR_CLOSET")
         elif _robot.curr_state == "AVOID_OBSTACLE_APRILTAG":
