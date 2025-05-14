@@ -104,8 +104,9 @@ class Robot():
 
     def chassis_callback(self, pos):
         x, y, _ = pos
-        if self.calculated_T_wa is False:
+        if not self.calculated_T_wa:
             self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
+            print(f"not calculated ?!?!?!?")
         else:
             rotated_pos = self.T_wa @ np.array([[x], [-y], [0], [1]])
             self.our_position = (rotated_pos[0, 3], rotated_pos[1, 3])
@@ -499,6 +500,9 @@ if __name__ == "__main__":
     # ax.set_ylim(0, 7)
     
     state_done_flag = False
+    
+    while not _robot.calculated_T_wa:
+        print('waiting')
         
     while True:
 
