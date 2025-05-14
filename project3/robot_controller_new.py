@@ -77,6 +77,7 @@ class Robot():
         self.our_heading = 0.0
         self.T_wa = None
         self.initial_heading_error = 0.0
+        self.calculated_T_wa = False
 
         # vision controller
         self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
@@ -103,11 +104,14 @@ class Robot():
 
     def chassis_callback(self, pos):
         x, y, _ = pos
-        if self.initial_heading_error is None:
+        if self.calculated_T_wa is False:
             self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
         else:
             rotated_pos = self.T_wa @ np.array([[x], [-y], [0], [1]])
             self.our_position = (rotated_pos[0, 3], rotated_pos[1, 3])
+            print(f"self.our_position: {self.our_position}")
+            position_history_x.append(self.our_position[0])
+            position_history_y.append(self.our_position[1])
         #print(f"current position: {self.our_position}")
         #print(self.get_current_location())
     
@@ -121,13 +125,14 @@ class Robot():
 
     def attitude_callback(self, pos):
         yaw, _, _ = pos
-        if self.initial_heading_error is None: # the first time we read the attitude, our yaw should be 90 in the global robot frame (which means it should point in +x in our frame). Create the transformation matrix from this initial angle reading
+        if self.calculated_T_wa == False: # the first time we read the attitude, our yaw should be 90 in the global robot frame (which means it should point in +x in our frame). Create the transformation matrix from this initial angle reading
             self.initial_heading_error = yaw - 90 # we want to be at heading 90, so if we are at heading 80 for example, then we need to rotate all future readings by 10 degrees (-10 degrees on the z axis)
             c, s = np.cos(self.initial_heading_error), np.sin(self.initial_heading_error)
             self.T_wa = np.array([[c, -s, 0, 3.0/FEET_TO_METER_DIV_BY],
                                   [s,  c, 0, 3.0/FEET_TO_METER_DIV_BY],
                                   [0,  0, 1,                        0],
                                   [0,  0, 0,                        1]])
+            self.calculated_T_wa = True
 
     def get_current_location(self):
         if OUR_CLOSET_BOUNDARY[0][0] <= self.our_position[0] <= OUR_CLOSET_BOUNDARY[1][0] and OUR_CLOSET_BOUNDARY[0][1] <= self.our_position[1] <= OUR_CLOSET_BOUNDARY[1][1]:
@@ -345,8 +350,16 @@ class Robot():
                 
             print(f'Error: {err_x_w} {err_y_w} \t Velos: {velo_x_w} {velo_y_w}')
 
-            velos_r = self.frame_rotation @ np.array([[float(velo_x_w)], [float(velo_y_w)]])
+            #velos_r = self.frame_rotation @ np.array([[float(velo_x_w)], [float(velo_y_w)]])
 
+            #velo_x_r = clamp(velos_r.item(0), ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
+            #velo_y_r = clamp(velos_r.item(1), ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
+
+            c, s = np.cos(self.initial_heading_error), np.sin(self.initial_heading_error)
+            R_wa = np.array([[c, -s, 0],
+                             [s,  c, 0],
+                             [0,  0, 1]])
+            velos_r = R_wa @ np.array([[velo_x_w], [velo_y_w], [1]])
             velo_x_r = clamp(velos_r.item(0), ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
             velo_y_r = clamp(velos_r.item(1), ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
             
@@ -482,8 +495,8 @@ if __name__ == "__main__":
     z_vel = 0.0
     
     fig, ax = plt.subplots()
-    ax.set_xlim(0, 4)
-    ax.set_ylim(0, 7)
+    # ax.set_xlim(0, 4)
+    # ax.set_ylim(0, 7)
     
     state_done_flag = False
         
