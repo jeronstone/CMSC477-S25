@@ -103,7 +103,8 @@ class Robot():
         if self.initial_heading_error is None:
             self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
         else:
-            self.our_position = self.T_wa @ np.array([[x], [-y], [0], [1]])
+            rotated_pos = self.T_wa @ np.array([[x], [-y], [0], [1]])
+            self.our_position = (rotated_pos[0, 3], rotated_pos[1, 3])
         #print(f"current position: {self.our_position}")
         #print(self.get_current_location())
     
@@ -117,10 +118,9 @@ class Robot():
 
     def attitude_callback(self, pos):
         yaw, _, _ = pos
-        if self.initial_heading_error is None: # the first time we read the attitude, our yaw should be 0 in the global robot frame (which means it should point in +x in our frame). Create the transformation matrix from this initial angle reading
-            self.initial_heading_error = -yaw # we want to be at heading 0, so if we are at heading -10 for example, then we need to add 10 to all future readings
-            theta = yaw + self.initial_heading_error
-            c, s = np.cos(-theta), np.sin(-theta)
+        if self.initial_heading_error is None: # the first time we read the attitude, our yaw should be 90 in the global robot frame (which means it should point in +x in our frame). Create the transformation matrix from this initial angle reading
+            self.initial_heading_error = yaw - 90 # we want to be at heading 90, so if we are at heading 80 for example, then we need to rotate all future readings by 10 degrees (-10 degrees on the z axis)
+            c, s = np.cos(self.initial_heading_error), np.sin(self.initial_heading_error)
             self.T_wa = np.array([[c, -s, 0, 3.0/FEET_TO_METER_DIV_BY],
                                   [s,  c, 0, 3.0/FEET_TO_METER_DIV_BY],
                                   [0,  0, 1,                        0],
@@ -364,7 +364,7 @@ class Robot():
                 for i, d in enumerate(detections):
                     cls, corners, depth, detected_block_lines_hough = d
                     if cls == 0: # robot detected
-                        intheway = (depth > ROBOT_CLOSE_THRESH)
+                        intheway = (depth < ROBOT_CLOSE_THRESH)
                         if intheway:
                             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                             self.prev_state = self.curr_state
@@ -392,7 +392,7 @@ class Robot():
             time.sleep(0.1)
             self.ep_chassis.move(x=0, y=0, z=int(np.rad2deg(self.curr_theta) - desired_heading), z_speed=45).wait_for_completed(2.0)
             time.sleep(2.0)
-            self.set_frame_rotation(desired_heading)
+            #self.set_frame_rotation(desired_heading)
             self.minimax_agent.curr_state.our_position = final_location
             self.prev_state = self.curr_state
             self.curr_state = "UPDATE_STATE"
@@ -439,7 +439,7 @@ class Robot():
             for i, d in enumerate(detections):
                 cls, corners, depth, detected_block_lines_hough = d
                 if cls == 0: # robot detected
-                    intheway = (depth > ROBOT_CLOSE_THRESH)
+                    intheway = (depth < ROBOT_CLOSE_THRESH)
                     if intheway:
                         print("Theres a robot thats too close still")
                         
