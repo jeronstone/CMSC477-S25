@@ -108,7 +108,7 @@ class Robot():
             self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
         else:
             rotated_xy = self.frame_rotation @ np.array([[float(x)], [float(y)]])
-            self.our_position = (rotated_xy[1][0] + 3.0/FEET_TO_METER_DIV_BY, rotated_xy[0][0] + 3.0/FEET_TO_METER_DIV_BY)
+            self.our_position = (rotated_xy[0][0] + 3.0/FEET_TO_METER_DIV_BY, -rotated_xy[1][0] + 3.0/FEET_TO_METER_DIV_BY)
             position_history_x.append(self.our_position[0])
             position_history_y.append(self.our_position[1])
         
