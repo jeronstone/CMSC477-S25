@@ -66,6 +66,8 @@ class Robot():
         self.ep_chassis = ep_robot.chassis
         self.ep_chassis.sub_attitude(freq=10, callback=self.attitude_callback)
         self.ep_chassis.sub_position(cs=0, freq=10, callback=self.chassis_callback)
+        ep_robot.sensor.sub_distance(freq=10, callback=self.dist_callback)
+        self.curr_ir_dist = 65534
         self.ep_gripper = ep_robot.gripper
         self.ep_arm = ep_robot.robotic_arm
         self.ep_led = ep_robot.led
@@ -104,6 +106,9 @@ class Robot():
             self.our_position = self.T_wa @ np.array([[x], [-y], [0], [1]])
         #print(f"current position: {self.our_position}")
         #print(self.get_current_location())
+    
+    def dist_callback(self, dist):
+        self.curr_ir_dist = dist
         
     def set_frame_rotation(self, desired_heading):
         theta = np.radians(self.prev_yaw - desired_heading) # how offset we are from +90
@@ -346,7 +351,15 @@ class Robot():
             #time.sleep(0.1)
             
             if avoid_obstacles:
-                print("detecing obstacles to avoid...")
+                #print("detecing obstacles to avoid...")
+                
+                if self.curr_ir_dist < 150: #TODO change?
+                    self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+                    self.prev_state = self.curr_state
+                    self.curr_state = "AVOID_OBSTACLE_IR_FALLBACk"
+                    return None, 0
+                    
+                    
                 fr, detections = self.vision.get_yolo_pred(frame, hough=False, depth_len=ROBOT_SIZE_EST)
                 for i, d in enumerate(detections):
                     cls, corners, depth, detected_block_lines_hough = d
@@ -388,7 +401,6 @@ class Robot():
     def avoid_obstacle(self, object, frame):
         print(f'Avoiding {object}')
         if object == "APRILTAG":
-            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
             
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray.astype(np.uint8)
@@ -402,10 +414,22 @@ class Robot():
                     print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
                         print("There's an Apriltag thats too close still")
+                        
+                        pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
+                        top_left = tuple(pts[0][0])  # First corner
+                        # top_right = tuple(pts[1][0])  # Second corner
+                        # bottom_right = tuple(pts[2][0])  # Third corner
+                        # bottom_left = tuple(pts[3][0])  # Fourth corner
+                        if top_left > 0:    # right side, move left
+                            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                        else:               # left side, move right
+                            self.ep_chassis.drive_speed(x=0.0, y=0.5, z=0.0, timeout=5)
+                        
                         return 1
             
             print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
+            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             self.curr_state = self.prev_state
             return 0
                 
@@ -418,11 +442,28 @@ class Robot():
                     intheway = (depth > ROBOT_CLOSE_THRESH)
                     if intheway:
                         print("Theres a robot thats too close still")
+                        
+                        if corners[0] > 0:  # right side, move left
+                            self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                        else:               # left side, move right
+                            self.ep_chassis.drive_speed(x=0.0, y=0.5, z=0.0, timeout=5)
+                        
                         return 1
             
             print("Obstacle avoided")
+            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             self.curr_state = self.prev_state
             return 0
+        elif object == "IR_SENSOR":
+            if self.curr_ir_dist < 200: #TODO thresh
+                # drive backwards slowly
+                self.ep_chassis.drive_speed(x=-0.3, y=0.0, z=0.0, timeout=5)
+                return 1
+            else:
+                print("Obstacle avoided")
+                self.curr_state = self.prev_state
+                self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+                return 0
     
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -519,6 +560,8 @@ if __name__ == "__main__":
             ret = _robot.avoid_obstacle("APRILTAG", frame)
         elif _robot.curr_state == "AVOID_OBSTACLE_ROBOT":
             ret = _robot.avoid_obstacle("ROBOT", frame)
+        elif _robot.curr_state == "AVOID_OBSTACLE_IR_FALLBACk":
+            ret = _robot.avoid_obstacle("IR_SENSOR", frame)
         elif _robot.curr_state == "UPDATE_STATE":
             fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.our_position)
         elif _robot.curr_state == "DONE":
