@@ -44,16 +44,16 @@ THEIR_ROOM_BOUNDARY = [(1.75/FEET_TO_METER_DIV_BY, 11.75/FEET_TO_METER_DIV_BY), 
 THEIR_CLOSET_BOUNDARY = [(0.25/FEET_TO_METER_DIV_BY, 16.0/FEET_TO_METER_DIV_BY), (2.0/FEET_TO_METER_DIV_BY, 19.0/FEET_TO_METER_DIV_BY)]
 
 # pickup/dropoff locations
-OUR_CLOSET_PICKUP = (2.72, 1.025)
+OUR_CLOSET_PICKUP = (2.62, 1.15)
 OUR_CLOSET_DROPOFF = (3.0, 0.75) # increment y by 0.2 each time we drop off
-OUR_ROOM_MOVE = (2.0, 1.025)
+OUR_ROOM_MOVE = (1.96, 1.08)
 OUR_ROOM_PICKUP = (2.585, 1.110)
 OUR_ROOM_DROPOFF = (1.5, 2.20) # decrement y by 0.2 each time we drop off
-HALLWAY_MOVE = (2.0, 3.05)
-THEIR_ROOM_MOVE = (2.0, 5.426)
+HALLWAY_MOVE = (1.96, 3.28)
+THEIR_ROOM_MOVE = (1.96, 5.50)
 THEIR_ROOM_PICKUP = (2.142, 5.426)
 THEIR_ROOM_DROPOFF = (2.9, 4.1) # increment y by 0.2 each time we drop off
-THEIR_CLOSET_PICKUP = (2.142, 5.426)
+THEIR_CLOSET_PICKUP = (1.23, 5.37)
 THEIR_CLOSET_DROPOFF = (1.512, 5.375) # increment y by 0.2 each time we drop off
 
 position_history_x = []
@@ -73,11 +73,24 @@ class Robot():
         self.ep_led = ep_robot.led
 
         # position/rotation variables
-        self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
-        self.our_heading = 0.0
-        self.T_wa = None
-        self.initial_heading_error = 0.0
-        self.calculated_T_wa = False
+        self.reported_position = (0.0, 0.0)
+        self.world_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
+
+        self.reported_heading = 0.0
+        self.world_heading = 0.0
+        
+        self.T_w_b0 = np.array([[1,  0,  0, 3.0/FEET_TO_METER_DIV_BY],
+                                [0, -1,  0, 3.0/FEET_TO_METER_DIV_BY],
+                                [0,  0, -1,                        0],
+                                [0,  0,  0,                        1]]) # initial body position in world frame
+        
+        self.T_b0_i = None # reported position in initial body frame
+
+        self.T_i_bt = None # current body position in reported frame
+
+        self.T_w_bt = None # current body position in world frame
+
+        self.calculated_initial_matrices = False # whether we have calculated T_b0_i
 
         # vision controller
         self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
@@ -102,49 +115,59 @@ class Robot():
         self.ep_arm.moveto(x=200, y=-25).wait_for_completed()
         time.sleep(1.0)
 
+    def attitude_callback(self, pos):
+        try:
+            yaw, _, _ = pos
+            self.reported_heading = yaw
+            if self.calculated_initial_matrices == False:
+                c, s = np.cos(np.deg2rad(self.reported_heading)), np.sin(np.deg2rad(self.reported_heading))
+                T_i_b0 = np.array([[c, -s, 0, self.reported_position[0]],
+                                        [s,  c, 0, self.reported_position[1]],
+                                        [0,  0, 1,                         0],
+                                        [0,  0, 0,                         1]])
+                self.T_b0_i = np.linalg.inv(T_i_b0)
+                # print(f"T_w_b0: {self.T_w_b0}")
+                # print(f"T_b0_i: {self.T_b0_i}")
+                self.calculated_initial_matrices = True
+        except Exception as e:
+            print(f"attitude callback exception: {e}")
+
     def chassis_callback(self, pos):
-        x, y, _ = pos
-        if not self.calculated_T_wa:
-            self.our_position = (3.0/FEET_TO_METER_DIV_BY, 3.0/FEET_TO_METER_DIV_BY)
-            print(f"not calculated ?!?!?!?")
-        else:
-            rotated_pos = self.T_wa @ np.array([[x], [-y], [0], [1]])
-            self.our_position = (rotated_pos[0, 3], rotated_pos[1, 3])
-            print(f"self.our_position: {self.our_position}")
-            position_history_x.append(self.our_position[0])
-            position_history_y.append(self.our_position[1])
-        #print(f"current position: {self.our_position}")
-        #print(self.get_current_location())
-    
+        try:
+            x, y, _ = pos
+            self.reported_position = (x, y)
+            if self.calculated_initial_matrices == True:
+                c, s = np.cos(np.deg2rad(self.reported_heading)), np.sin(np.deg2rad(self.reported_heading))
+                self.T_i_bt = np.array([[c, -s, 0, self.reported_position[0]],
+                                        [s,  c, 0, self.reported_position[1]],
+                                        [0,  0, 1,                         0],
+                                        [0,  0, 0,                         1]])
+                # print(f"T_i_bt: {self.T_i_bt}")
+                self.T_w_bt = self.T_w_b0 @ self.T_b0_i @ self.T_i_bt
+                # print(f"T_w_bt: {T_w_bt}")
+                self.world_position = (self.T_w_bt[0, 3], self.T_w_bt[1, 3])
+                self.world_heading = np.arctan2(self.T_w_bt[1, 0], self.T_w_bt[0, 0])
+                print(f"world position: {self.world_position}; world heading: {self.world_heading}")
+                position_history_x.append(self.world_position[0])
+                position_history_y.append(self.world_position[1])
+            #print(f"current position: {self.world_position}")
+            #print(self.get_current_location())
+        except Exception as e:
+            print(f"chassis callback exception: {e}")
+
     def dist_callback(self, dist):
         self.curr_ir_dist = dist[0]
-        
-    def set_frame_rotation(self, desired_heading):
-        theta = np.radians(self.prev_yaw - desired_heading) # how offset we are from +90
-        c, s = np.cos(-theta), np.sin(-theta) # we want the rotation matrix to be the opposite of that angle
-        self.frame_rotation = np.array([[c, -s], [s, c]]) # final rotation matrix
-
-    def attitude_callback(self, pos):
-        yaw, _, _ = pos
-        if self.calculated_T_wa == False: # the first time we read the attitude, our yaw should be 90 in the global robot frame (which means it should point in +x in our frame). Create the transformation matrix from this initial angle reading
-            self.initial_heading_error = yaw - 90 # we want to be at heading 90, so if we are at heading 80 for example, then we need to rotate all future readings by 10 degrees (-10 degrees on the z axis)
-            c, s = np.cos(self.initial_heading_error), np.sin(self.initial_heading_error)
-            self.T_wa = np.array([[c, -s, 0, 3.0/FEET_TO_METER_DIV_BY],
-                                  [s,  c, 0, 3.0/FEET_TO_METER_DIV_BY],
-                                  [0,  0, 1,                        0],
-                                  [0,  0, 0,                        1]])
-            self.calculated_T_wa = True
 
     def get_current_location(self):
-        if OUR_CLOSET_BOUNDARY[0][0] <= self.our_position[0] <= OUR_CLOSET_BOUNDARY[1][0] and OUR_CLOSET_BOUNDARY[0][1] <= self.our_position[1] <= OUR_CLOSET_BOUNDARY[1][1]:
+        if OUR_CLOSET_BOUNDARY[0][0] <= self.world_position[0] <= OUR_CLOSET_BOUNDARY[1][0] and OUR_CLOSET_BOUNDARY[0][1] <= self.world_position[1] <= OUR_CLOSET_BOUNDARY[1][1]:
             return "OUR_CLOSET"
-        elif OUR_ROOM_BOUNDARY[0][0] <= self.our_position[0] <= OUR_ROOM_BOUNDARY[1][0] and OUR_ROOM_BOUNDARY[0][1] <= self.our_position[1] <= OUR_ROOM_BOUNDARY[1][1]:
+        elif OUR_ROOM_BOUNDARY[0][0] <= self.world_position[0] <= OUR_ROOM_BOUNDARY[1][0] and OUR_ROOM_BOUNDARY[0][1] <= self.world_position[1] <= OUR_ROOM_BOUNDARY[1][1]:
             return "OUR_ROOM"
-        elif HALLWAY_BOUNDARY[0][0] <= self.our_position[0] <= HALLWAY_BOUNDARY[1][0] and HALLWAY_BOUNDARY[0][1] <= self.our_position[1] <= HALLWAY_BOUNDARY[1][1]:
+        elif HALLWAY_BOUNDARY[0][0] <= self.world_position[0] <= HALLWAY_BOUNDARY[1][0] and HALLWAY_BOUNDARY[0][1] <= self.world_position[1] <= HALLWAY_BOUNDARY[1][1]:
             return "HALLWAY"
-        elif THEIR_ROOM_BOUNDARY[0][0] <= self.our_position[0] <= THEIR_ROOM_BOUNDARY[1][0] and THEIR_ROOM_BOUNDARY[0][1] <= self.our_position[1] <= THEIR_ROOM_BOUNDARY[1][1]:
+        elif THEIR_ROOM_BOUNDARY[0][0] <= self.world_position[0] <= THEIR_ROOM_BOUNDARY[1][0] and THEIR_ROOM_BOUNDARY[0][1] <= self.world_position[1] <= THEIR_ROOM_BOUNDARY[1][1]:
             return "THEIR_ROOM"
-        elif THEIR_CLOSET_BOUNDARY[0][0] <= self.our_position[0] <= THEIR_CLOSET_BOUNDARY[1][0] and THEIR_CLOSET_BOUNDARY[0][1] <= self.our_position[1] <= THEIR_CLOSET_BOUNDARY[1][1]:
+        elif THEIR_CLOSET_BOUNDARY[0][0] <= self.world_position[0] <= THEIR_CLOSET_BOUNDARY[1][0] and THEIR_CLOSET_BOUNDARY[0][1] <= self.world_position[1] <= THEIR_CLOSET_BOUNDARY[1][1]:
             return "THEIR_CLOSET"
         else:
             return "undef"
@@ -335,13 +358,13 @@ class Robot():
             # but I like the explicivity here just to be safe
             return None, -1
         
-        err_x_w = self.our_position[0] - desired_x # x error in world frame
-        err_y_w = self.our_position[1] - desired_y # y error in world frame
+        err_x_w = self.world_position[0] - desired_x # x error in world frame
+        err_y_w = self.world_position[1] - desired_y # y error in world frame
 
         if abs(err_x_w) > DIST_THRESH_X or abs(err_y_w) > DIST_THRESH_Y:
             
             velo_x_w = -0.5 * err_x_w # x vel in world frame
-            velo_y_w = 0.5 * err_y_w # y vel in world frame
+            velo_y_w = -0.5 * err_y_w # y vel in world frame
             
             # if abs(err_x_w) > DIST_THRESH_X:
             #     velo_x_w = -math.copysign(0.4, err_x_w)
@@ -356,11 +379,8 @@ class Robot():
             #velo_x_r = clamp(velos_r.item(0), ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
             #velo_y_r = clamp(velos_r.item(1), ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
 
-            c, s = np.cos(self.initial_heading_error), np.sin(self.initial_heading_error)
-            R_wa = np.array([[c, -s, 0],
-                             [s,  c, 0],
-                             [0,  0, 1]])
-            velos_r = R_wa @ np.array([[velo_x_w], [velo_y_w], [1]])
+            R_bt_w = np.linalg.inv(self.T_w_bt)[:3, :3]
+            velos_r = R_bt_w @ np.array([[velo_x_w], [velo_y_w], [0]])
             velo_x_r = clamp(velos_r.item(0), ROBOT_X_VELOCITY_MIN, ROBOT_X_VELOCITY_MAX)
             velo_y_r = clamp(velos_r.item(1), ROBOT_Y_VELOCITY_MIN, ROBOT_Y_VELOCITY_MAX)
             
@@ -408,10 +428,10 @@ class Robot():
         else:
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             time.sleep(0.1)
-            self.ep_chassis.move(x=0, y=0, z=int(np.rad2deg(self.curr_theta) - desired_heading), z_speed=45).wait_for_completed(2.0)
+            self.ep_chassis.move(x=0, y=0, z=-int(np.rad2deg(self.world_heading) - desired_heading), z_speed=45).wait_for_completed(2.0)
             time.sleep(2.0)
             #self.set_frame_rotation(desired_heading)
-            self.minimax_agent.curr_state.our_position = final_location
+            self.minimax_agent.curr_state.world_position = final_location
             self.prev_state = self.curr_state
             self.curr_state = "UPDATE_STATE"
             return None, 0
@@ -496,16 +516,13 @@ if __name__ == "__main__":
     z_vel = 0.0
     
     fig, ax = plt.subplots()
-    # ax.set_xlim(0, 4)
-    # ax.set_ylim(0, 7)
+    ax.set_xlim(0, 4)
+    ax.set_ylim(0, 7)
     
     state_done_flag = False
-    
-    while not _robot.calculated_T_wa:
-        print('waiting')
         
     while True:
-
+        
         try:
             frame = ep_camera.read_cv2_image(strategy="newest", timeout=0.5)
         except Empty:
@@ -538,7 +555,7 @@ if __name__ == "__main__":
             time.sleep(0.1)
             continue
         
-
+        
         if state_done_flag:
             print("done flag true")
             state_done_flag = False
@@ -576,15 +593,15 @@ if __name__ == "__main__":
         elif _robot.curr_state == "GRIP_PICKUP":
             _robot.grip_pickup()
         elif _robot.curr_state == "MOVE_OUR_CLOSET":
-            fr, ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 90, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
+            fr, ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 0, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_OUR_ROOM":
-            fr, ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 0, "OUR_ROOM")
+            fr, ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 90, "OUR_ROOM")
         elif _robot.curr_state == "MOVE_HALLWAY":
-            fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 0, "HALLWAY")
+            fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 90, "HALLWAY")
         elif _robot.curr_state == "MOVE_THEIR_ROOM":
-            fr, ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -90, "THEIR_ROOM")
+            fr, ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], 180, "THEIR_ROOM")
         elif _robot.curr_state == "MOVE_THEIR_CLOSET":
-            fr, ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], -90, "THEIR_CLOSET")
+            fr, ret = _robot.move_to_xy(THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], 180, "THEIR_CLOSET")
         elif _robot.curr_state == "AVOID_OBSTACLE_APRILTAG":
             ret = _robot.avoid_obstacle("APRILTAG", frame)
         elif _robot.curr_state == "AVOID_OBSTACLE_ROBOT":
@@ -592,7 +609,7 @@ if __name__ == "__main__":
         elif _robot.curr_state == "AVOID_OBSTACLE_IR_FALLBACk":
             ret = _robot.avoid_obstacle("IR_SENSOR", frame)
         elif _robot.curr_state == "UPDATE_STATE":
-            fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.our_position)
+            fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.world_position)
         elif _robot.curr_state == "DONE":
             state_done_flag = True
         
@@ -601,15 +618,41 @@ if __name__ == "__main__":
         # if ret == 1:
         #     break
         
-        ax.plot(position_history_x, position_history_y) 
+        
+        ax.plot(position_history_x, position_history_y, 'r') 
         plt.draw()
         plt.pause(0.01)
-
+        
+        
         if fr is not None:
             cv2.imshow("img", fr)
             key = cv2.waitKey(1)
             if key == ord('z'):
                 break
+        
+        '''
+        cv2.imshow("img", frame)
+        key = cv2.waitKey(1)
+        if key == ord('w'):
+            x_vel += 0.1
+        elif key == ord('s'):
+            x_vel -= 0.1
+        elif key == ord('a'):
+            y_vel -= 0.1
+        elif key == ord('d'):
+            y_vel += 0.1
+        elif key == ord('q'):
+            z_vel -= 5.0
+        elif key == ord('e'):
+            z_vel += 5.0
+        elif key == ord(' '):
+            x_vel = 0.0
+            y_vel = 0.0
+            z_vel = 0.0
+        elif key == ord('z'):
+            break
+        _robot.ep_chassis.drive_speed(x=x_vel, y=y_vel, z=z_vel, timeout=5)
+        '''
 
     _robot.ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
     ep_robot.close()
