@@ -97,6 +97,9 @@ class Robot():
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
         self.controller.set_lambda_matrix([3.0, 1.0]) # robot y velocity; robot x velocity
         self.controller.set_desired_points([(-0.16, 0.375, 0.18), (0.16, 0.375, 0.18), (-0.16, 0.95, 0.18), (0.16, 0.95, 0.18)])
+        
+        self.ep_arm.moveto(x=200, y=-25).wait_for_completed()
+        time.sleep(1.0)
 
     def chassis_callback(self, pos):
         x, y, _ = pos
@@ -109,7 +112,7 @@ class Robot():
         #print(self.get_current_location())
     
     def dist_callback(self, dist):
-        self.curr_ir_dist = dist
+        self.curr_ir_dist = dist[0]
         
     def set_frame_rotation(self, desired_heading):
         theta = np.radians(self.prev_yaw - desired_heading) # how offset we are from +90
@@ -353,7 +356,7 @@ class Robot():
             if avoid_obstacles:
                 #print("detecing obstacles to avoid...")
                 
-                if self.curr_ir_dist < 150: #TODO change?
+                if self.curr_ir_dist < 225: #TODO change?
                     self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                     self.prev_state = self.curr_state
                     self.curr_state = "AVOID_OBSTACLE_IR_FALLBACk"
@@ -364,6 +367,7 @@ class Robot():
                 for i, d in enumerate(detections):
                     cls, corners, depth, detected_block_lines_hough = d
                     if cls == 0: # robot detected
+                        print(f'ROBOT DEPTH: {depth}')
                         intheway = (depth < ROBOT_CLOSE_THRESH)
                         if intheway:
                             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
@@ -420,7 +424,7 @@ class Robot():
                         # top_right = tuple(pts[1][0])  # Second corner
                         # bottom_right = tuple(pts[2][0])  # Third corner
                         # bottom_left = tuple(pts[3][0])  # Fourth corner
-                        if top_left > 0:    # right side, move left
+                        if top_left[0] > 0:    # right side, move left
                             self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
                         else:               # left side, move right
                             self.ep_chassis.drive_speed(x=0.0, y=0.5, z=0.0, timeout=5)
@@ -455,9 +459,9 @@ class Robot():
             self.curr_state = self.prev_state
             return 0
         elif object == "IR_SENSOR":
-            if self.curr_ir_dist < 200: #TODO thresh
-                # drive backwards slowly
-                self.ep_chassis.drive_speed(x=-0.3, y=0.0, z=0.0, timeout=5)
+            if self.curr_ir_dist < 275: #TODO thresh
+                # drive left slowly
+                self.ep_chassis.drive_speed(x=0.0, y=-0.3, z=0.0, timeout=5)
                 return 1
             else:
                 print("Obstacle avoided")
@@ -525,17 +529,25 @@ if __name__ == "__main__":
             _robot.curr_action = _robot.minimax_agent.choose_action()
             if _robot.curr_action == Action.PICKUP_BLOCK_2x2 or _robot.curr_action == Action.PICKUP_BLOCK_2x4 or _robot.curr_action == Action.PICKUP_BLOCK_4x4:
                 _robot.curr_state = "MOVE_LEFTMOST_BLOCK"
+                _robot.ep_arm.moveto(x=200, y=-50).wait_for_completed()
+                time.sleep(1.0)
             elif _robot.curr_action == Action.DROP_BLOCK:
+                _robot.ep_arm.moveto(x=200, y=-50).wait_for_completed()
                 _robot.curr_state = "GRIP_DROP"
             elif _robot.curr_action == Action.MOVE_OUR_CLOSET:
+                _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed()
                 _robot.curr_state = "MOVE_OUR_CLOSET"
             elif _robot.curr_action == Action.MOVE_OUR_ROOM:
+                _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed()
                 _robot.curr_state = "MOVE_OUR_ROOM"
             elif _robot.curr_action == Action.MOVE_HALLWAY:
+                _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed()
                 _robot.curr_state = "MOVE_HALLWAY"
             elif _robot.curr_action == Action.MOVE_THEIR_ROOM:
+                _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed()
                 _robot.curr_state = "MOVE_THEIR_ROOM"
             elif _robot.curr_action == Action.MOVE_THEIR_CLOSET:
+                _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed()
                 _robot.curr_state = "MOVE_THEIR_CLOSET"
             else:
                 _robot.curr_state = "DONE"
