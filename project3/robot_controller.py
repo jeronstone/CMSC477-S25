@@ -61,6 +61,10 @@ THEIR_ROOM_DROPOFF = (2.9, 4.1) # increment y by 0.2 each time we drop off
 THEIR_CLOSET_PICKUP = (0.72, 5.37)
 THEIR_CLOSET_DROPOFF = (1.512, 5.375) # increment y by 0.2 each time we drop off
 
+LEGO_BIG_DESIRED = [(-0.16, 0.375, 0.18), (0.16, 0.375, 0.18), (-0.16, 0.95, 0.18), (0.16, 0.95, 0.18)]
+LEGO_MEDIUM_DESIRED = [(-0.13, 0.55, 0.18), (0.13, 0.55, 0.18), (-0.13, 0.95, 0.18), (0.13, 0.95, 0.18)]
+LEGO_SMALL_DESIRED = [(-0.1, 0.55, 0.18), (0.1, 0.55, 0.18), (-0.1, 0.95, 0.18), (0.1, 0.95, 0.18)]
+
 position_history_x = []
 position_history_y = []
 
@@ -106,7 +110,7 @@ class Robot():
         # minimax agent
         self.minimax_agent = MiniMaxAgent(State(), 2*2)
         self.curr_action = None
-        self.curr_state = "DONE_WAIT"#"MOVE_LEFTMOST_BLOCK"
+        self.curr_state = "DONE"#"MOVE_LEFTMOST_BLOCK"
         self.prev_state  = "DONE_WAIT"
         self.state_timer = 0
 
@@ -118,9 +122,9 @@ class Robot():
         # IBVS controller
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
         self.controller.set_lambda_matrix([1.9, 0.5]) # robot y velocity; robot x velocity
-        self.controller.set_desired_points([(-0.16, 0.375, 0.18), (0.16, 0.375, 0.18), (-0.16, 0.95, 0.18), (0.16, 0.95, 0.18)])
+        self.controller.set_desired_points(LEGO_BIG_DESIRED)
         
-        self.ep_arm.moveto(x=200, y=-25).wait_for_completed()
+        self.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
         # time.sleep(1.0)
 
     def attitude_callback(self, pos):
@@ -233,12 +237,12 @@ class Robot():
         print('here')
         self.state_timer += 1
         
-        if self.state_timer >= PICKUP_TIMER_ABORT:
-            print("taking too long, abort pickup...")
-            self.prev_state = self.curr_state
-            self.curr_state = "MOVE_OUR_CLOSET"
-            self.curr_action = Action.MOVE_OUR_CLOSET
-            return frame
+        # if self.state_timer >= PICKUP_TIMER_ABORT:
+        #     print("taking too long, abort pickup...")
+        #     self.prev_state = self.curr_state
+        #     self.curr_state = "MOVE_OUR_CLOSET"
+        #     self.curr_action = Action.MOVE_OUR_CLOSET
+        #     return frame
         
         if len(yolo_detections) == 0:
             self.ep_chassis.drive_speed(x=0, y=0, z=20, timeout=5)
@@ -259,6 +263,13 @@ class Robot():
                 return frame
             
             cls, corners, depth, detected_block_lines_hough = yolo_detections[leftmost_idx]
+
+            if cls == 2:
+                self.controller.set_desired_points(LEGO_BIG_DESIRED)
+            elif cls == 3:
+                self.controller.set_desired_points(LEGO_MEDIUM_DESIRED)
+            elif cls == 4:
+                self.controller.set_desired_points(LEGO_SMALL_DESIRED)
                     
             self.controller.set_current_points([(corners[0], corners[1], depth), (corners[2], corners[1], depth), (corners[0], corners[3], depth), (corners[2], corners[3], depth)])
             self.controller.calculate_interaction_matrix()
@@ -625,6 +636,10 @@ if __name__ == "__main__":
                 x_vel = 0.0
                 y_vel = 0.0
                 z_vel = 0.0
+            elif key == ord('r'):
+                _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
+            elif key == ord('f'):
+                _robot.ep_arm.moveto(x=200, y=-50).wait_for_completed(1.0)
             elif key == ord('l'):
                 print('turn to 0 deg')
                 turn_angle = ((0 - np.rad2deg(_robot.world_heading) + 540) % 360) - 180
@@ -646,7 +661,15 @@ if __name__ == "__main__":
             _robot.ep_chassis.drive_speed(x=x_vel, y=y_vel, z=z_vel, timeout=5)
             print(f"world_position: {_robot.world_position} world_heading: {_robot.world_heading}")
         
-        ax.plot(position_history_x, position_history_y, 'r') 
+        if len(position_history_x) > 2048:
+            position_history_x = position_history_x[-2048:]
+        if len(position_history_y) > 2048:
+            position_history_x = position_history_y[-2048:]
+        if len(position_history_x) > len(position_history_y):
+            position_history_x = position_history_x[-len(position_history_y):]
+        if len(position_history_y) > len(position_history_x):
+            position_history_y = position_history_y[-len(position_history_x):]
+        ax.plot(position_history_x, position_history_y, 'r')
         plt.draw()
         plt.pause(0.01)
         
@@ -661,7 +684,13 @@ if __name__ == "__main__":
         
         '''
 
+    plt.close()
+    cv2.destroyAllWindows()
     _robot.ep_chassis.drive_speed(x=0, y=0, z=0, timeout=5)
+    _robot.ep_arm.moveto(x=200, y=-50).wait_for_completed(1.0)
+    _robot.ep_gripper.open(power=150)
+    time.sleep(1.0)
+    _robot.ep_gripper.pause()
     ep_robot.close()
     exit(0)
 
