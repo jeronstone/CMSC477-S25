@@ -31,6 +31,10 @@ DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
 APRILTAG_CLOSE_TRESH = 0.25
 ROBOT_CLOSE_THRESH = 0.2
+IR_AVOID_THRESH = 375
+IR_SAFE_THRESH = 400
+PICKUP_TIMER_ABORT = 150
+AVOID_POST_TIME_BUFFER = 10
 
 FEET_TO_METER_DIV_BY = 3.281
 
@@ -103,7 +107,10 @@ class Robot():
         self.curr_action = None
         self.curr_state = "DONE"#"MOVE_LEFTMOST_BLOCK"
         self.prev_state  = "DONE"
+        self.state_timer = 0
 
+        self.avoid_time_buffer = 0
+        
         # map controller
         #self.map = MapController(ep_robot)
 
@@ -217,6 +224,14 @@ class Robot():
         self.curr_state = "DONE"
 
     def move_to_leftmost_block(self, frame):
+            
+        self.state_timer += 1
+        
+        if self.state_timer > PICKUP_TIMER_ABORT:
+            print("taking too long, abort pickup...")
+            self.prev_state = self.curr_state
+            self.curr_state = "MOVE_OUR_CLOSET"
+            return None, 1
             
         fr, detections = self.vision.get_yolo_pred(frame, hough=True)
         
@@ -391,7 +406,7 @@ class Robot():
             if avoid_obstacles:
                 #print("detecing obstacles to avoid...")
                 
-                if self.curr_ir_dist < 225: #TODO change?
+                if self.curr_ir_dist < IR_AVOID_THRESH:
                     self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                     self.prev_state = self.curr_state
                     self.curr_state = "AVOID_OBSTACLE_IR_FALLBACk"
@@ -468,8 +483,8 @@ class Robot():
             
             # print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
-            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-            self.curr_state = self.prev_state
+            self.curr_state = "AVOID_POST_TIME_BUFFER"
+            self.avoid_time_buffer = 0
             return 0
                 
         elif object == "ROBOT":
@@ -490,19 +505,29 @@ class Robot():
                         return 1
             
             # print("Obstacle avoided")
-            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-            self.curr_state = self.prev_state
+            self.curr_state = "AVOID_POST_TIME_BUFFER"
+            self.avoid_time_buffer = 0
             return 0
         elif object == "IR_SENSOR":
-            if self.curr_ir_dist < 275: #TODO thresh
+            if self.curr_ir_dist < IR_SAFE_THRESH:
                 # drive left slowly
                 self.ep_chassis.drive_speed(x=0.0, y=-0.3, z=0.0, timeout=5)
                 return 1
             else:
                 # print("Obstacle avoided")
-                self.curr_state = self.prev_state
-                self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+                self.curr_state = "AVOID_POST_TIME_BUFFER"
+                self.avoid_time_buffer = 0
                 return 0
+        elif object == "TIME_BUFFER":
+            if self.avoid_time_buffer < AVOID_POST_TIME_BUFFER:
+                print(f'AVOID BUFFER {self.avoid_time_buffer}')
+                self.avoid_time_buffer += 1
+                return 1
+            else:
+                self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+                self.curr_state = self.prev_state
+                return 0
+            
     
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -566,6 +591,7 @@ if __name__ == "__main__":
             if _robot.curr_action == Action.PICKUP_BLOCK_2x2 or _robot.curr_action == Action.PICKUP_BLOCK_2x4 or _robot.curr_action == Action.PICKUP_BLOCK_4x4:
                 _robot.curr_state = "MOVE_LEFTMOST_BLOCK"
                 _robot.ep_arm.moveto(x=200, y=-50).wait_for_completed()
+                _robot.state_timer = 0
                 time.sleep(1.0)
             elif _robot.curr_action == Action.DROP_BLOCK:
                 _robot.ep_arm.moveto(x=200, y=-50).wait_for_completed()
@@ -588,10 +614,11 @@ if __name__ == "__main__":
             else:
                 _robot.curr_state = "DONE"
         
-        # print(f"curr state: {_robot.curr_state}")
+        print(f"curr state: {_robot.curr_state}")
         fr = None
         if _robot.curr_state == "MOVE_LEFTMOST_BLOCK":
             fr, ret = _robot.move_to_leftmost_block(frame)
+            print(f'state timer: {_robot.state_timer}')
         elif _robot.curr_state == "GRIP_PICKUP":
             _robot.grip_pickup()
         elif _robot.curr_state == "GRIP_DROP":
@@ -612,11 +639,12 @@ if __name__ == "__main__":
             ret = _robot.avoid_obstacle("ROBOT", frame)
         elif _robot.curr_state == "AVOID_OBSTACLE_IR_FALLBACk":
             ret = _robot.avoid_obstacle("IR_SENSOR", frame)
+        elif _robot.curr_state == "AVOID_POST_TIME_BUFFER":
+            ret = _robot.avoid_obstacle("TIME_BUFFER", frame)
         elif _robot.curr_state == "UPDATE_STATE":
             fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.world_position)
         elif _robot.curr_state == "DONE":
             state_done_flag = True
-        
         
         # fr, ret = _robot.move_to_leftmost_block(frame)
         # if ret == 1:
