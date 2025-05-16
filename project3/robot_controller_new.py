@@ -29,12 +29,14 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
-APRILTAG_CLOSE_TRESH = 0.25
-ROBOT_CLOSE_THRESH = 0.2
+APRILTAG_CLOSE_TRESH = 0.05
+ROBOT_CLOSE_THRESH = 0.1
 IR_AVOID_THRESH = 375
 IR_SAFE_THRESH = 400
 PICKUP_TIMER_ABORT = 150
-AVOID_POST_TIME_BUFFER = 10
+AVOID_POST_TIME_BUFFER = 0
+APRILTAG_IN_THE_WAY_BUFFER = 0.15
+APRILTAG_OBSTACLE_OFFSET = 0.25
 
 FEET_TO_METER_DIV_BY = 3.281
 
@@ -110,6 +112,13 @@ class Robot():
         self.state_timer = 0
 
         self.avoid_time_buffer = 0
+        
+        self.apriltag_map = {}
+        self.apriltag_map["OUR_CLOSET"] = {}
+        self.apriltag_map["OUR_ROOM"] = {}
+        self.apriltag_map["HALLWAY"] = {}
+        self.apriltag_map["THEIR_CLOSET"] = {}
+        self.apriltag_map["THEIR_ROOM"] = {}
         
         # map controller
         #self.map = MapController(ep_robot)
@@ -364,15 +373,39 @@ class Robot():
             # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
                 pass
     
+    def get_avoid_apriltag_waypoint(self, desired_x, desired_y):
+        avoid_apriltag_waypoint = None
+        
+        if self.get_current_location == "HALLWAY":
+            return avoid_apriltag_waypoint
+        
+        for tag, pos in self.apriltag_map[self.get_current_location()].items():
+            # https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+            dist_to_lineseg = abs((desired_y-self.world_position[1])*pos[0] - (desired_x-self.world_position[0])*pos[1] + desired_x*self.world_position[1] - desired_y*self.world_position[0])
+            dist_to_lineseg /= math.sqrt((desired_y-self.world_position[1])**2 + (desired_x-self.world_position[0])**2)
+            
+            if dist_to_lineseg < APRILTAG_IN_THE_WAY_BUFFER:
+                dist_vect_x, dist_vect_y = desired_x - self.world_position[0], desired_y - self.world_position[1]
+                lineseg_norm = math.hypot(dist_vect_x, dist_vect_y)
+                unit_vec_x, unit_vec_y = -dist_vect_y / lineseg_norm, dist_vect_x / lineseg_norm                
+                avoid_apriltag_waypoint = (pos[0] + unit_vec_x*APRILTAG_OBSTACLE_OFFSET, pos[1] + unit_vec_y*APRILTAG_OBSTACLE_OFFSET)
+                print(f'AT {tag} at {pos} IN PATH - ADDING WAYPOINT {avoid_apriltag_waypoint}')
+                break # assume only 1 in the way ?
+        
+        return avoid_apriltag_waypoint
+    
     '''
-    Moves to global position x, y on the map using simple p loop and constant speed
+    Moves to global position x, y on the map using simple p loop
     '''
     def move_to_xy(self, desired_x, desired_y, desired_heading, final_location, avoid_obstacles=False, frame=None):
         
         if avoid_obstacles and frame is None:
-            # could get rid of the bool and just None check to determine if detecting 
-            # but I like the explicivity here just to be safe
             return None, -1
+        
+        # if avoid_obstacles:
+        #     ret = self.get_avoid_apriltag_waypoint(desired_x, desired_y)
+        #     if ret is not None:
+        #         return self.move_to_xy(ret[0], ret[1], desired_heading, final_location, avoid_obstacles, frame)
         
         err_x_w = self.world_position[0] - desired_x # x error in world frame
         err_y_w = self.world_position[1] - desired_y # y error in world frame
@@ -424,21 +457,63 @@ class Robot():
                             self.prev_state = self.curr_state
                             self.curr_state = "AVOID_OBSTACLE_ROBOT"
                             return fr, 0
-                
+            
+            if avoid_obstacles:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 gray.astype(np.uint8)
 
                 detections = self.apriltag_detector.find_tags(gray)
+                intheway=False
                 # print(f"apriltag detector detected: {len(detections)} apriltags")
+                
+                closest_twa = None
+                minscore = float('inf')
                 for detection in detections:
                     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
                     distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+                    
+                    T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
+                                    [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
+                                    [R_ca[2,0], R_ca[2,1], R_ca[2,2], t_ca[2]],
+                                    [        0,         0,         0,       1]])
+                    
+                    T_wa = self.T_w_bt @ T_ca
+                    
+                    t_wa_x = T_wa[0, 3]
+                    t_wa_y = T_wa[1, 3]
+                    
+                    closeness_score = 0.3*distance
+                    rotation_score = 0.7*np.linalg.norm((np.identity(3)-R_ca))
+
+                    final_score = closeness_score+rotation_score
+
+                    if (closest_twa is None or final_score < minscore):
+                        closest_twa = (t_wa_x, t_wa_y)
+                        minscore = final_score
+                    
                     # print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
+                        print(f'Apriltag dist (TOO CLOSE): {distance}')
                         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                         self.prev_state = self.curr_state
                         self.curr_state = "AVOID_OBSTACLE_APRILTAG"
-                        return fr, 0
+                        intheway=True
+                        
+                if closest_twa is not None:
+                    self.apriltag_map[self.get_current_location()][detection.tag_id] = (closest_twa[0], closest_twa[1])
+                    print(f'Updated map: {self.apriltag_map}')
+                        
+                for tag, pos in self.apriltag_map[self.get_current_location()].items():
+                    if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
+                        print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+                        self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+                        self.prev_state = self.curr_state
+                        self.curr_state = "AVOID_OBSTACLE_APRILTAG"
+                        intheway=True
+                        break
+                
+                if intheway:
+                    return fr, 0
             
             return None, 1
         else:
@@ -483,6 +558,12 @@ class Robot():
                             self.ep_chassis.drive_speed(x=0.0, y=0.5, z=0.0, timeout=5)
                         
                         return 1
+                    
+            for tag, pos in self.apriltag_map[self.get_current_location()].items():
+                if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
+                    #print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+                    self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                    return 1
             
             # print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
@@ -630,9 +711,9 @@ if __name__ == "__main__":
         elif _robot.curr_state == "MOVE_OUR_CLOSET":
             fr, ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 0, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_OUR_ROOM":
-            fr, ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 90, "OUR_ROOM")
+            fr, ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 90, "OUR_ROOM", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_HALLWAY":
-            fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 90, "HALLWAY")
+            fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 90, "HALLWAY", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_THEIR_ROOM":
             fr, ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -179, "THEIR_ROOM")
         elif _robot.curr_state == "MOVE_THEIR_CLOSET":
