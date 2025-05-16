@@ -36,7 +36,7 @@ IR_AVOID_THRESH = 400
 IR_SAFE_THRESH = 425
 PICKUP_TIMER_ABORT = 50
 AVOID_POST_TIME_BUFFER = 0
-APRILTAG_IN_THE_WAY_BUFFER = 0.15
+APRILTAG_IN_THE_WAY_BUFFER = 0.1
 APRILTAG_OBSTACLE_OFFSET = 0.25
 
 FEET_TO_METER_DIV_BY = 3.281
@@ -486,6 +486,7 @@ class Robot():
                         # top_right = tuple(pts[1][0])  # Second corner
                         # bottom_right = tuple(pts[2][0])  # Third corner
                         # bottom_left = tuple(pts[3][0])  # Fourth corner
+                        print(f'top left: {top_left}')
                         if top_left[0] > frame.shape[1]/2:    # right side, move left
                             self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
                         else:               # left side, move right
