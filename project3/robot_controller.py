@@ -30,7 +30,7 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
-APRILTAG_CLOSE_TRESH = 0.03
+APRILTAG_CLOSE_TRESH = 0.04
 ROBOT_CLOSE_THRESH = 0.05
 IR_AVOID_THRESH = 400
 IR_SAFE_THRESH = 425
@@ -38,6 +38,7 @@ PICKUP_TIMER_ABORT = 50
 AVOID_POST_TIME_BUFFER = 0
 APRILTAG_IN_THE_WAY_BUFFER = 0.1
 APRILTAG_OBSTACLE_OFFSET = 0.25
+FALLBACK_DIST_THRESH = 0.25
 
 FEET_TO_METER_DIV_BY = 3.281
 
@@ -89,6 +90,8 @@ class Robot():
 
         self.prev_location = "OUR_CLOSET"
         self.curr_location = "OUR_ROOM"
+
+        self.curr_destination = (0.0, 0.0)
 
         self.reported_heading = 0.0
         self.world_heading = 0.0
@@ -358,8 +361,8 @@ class Robot():
     '''
     def move_to_xy(self, frame, yolo_detections, apriltag_detections, desired_x, desired_y, final_location):
         
-        err_x_w = self.world_position[0] - desired_x # x error in world frame
-        err_y_w = self.world_position[1] - desired_y # y error in world frame
+        err_x_w = self.world_position[0] - self.curr_destination[0] # x error in world frame
+        err_y_w = self.world_position[1] - self.curr_destination[1] # y error in world frame
 
         if abs(err_x_w) > DIST_THRESH_X or abs(err_y_w) > DIST_THRESH_Y:
             
@@ -419,6 +422,13 @@ class Robot():
                     self.curr_state = "AVOID_OBSTACLE_APRILTAG"
 
             for tag, pos in self.apriltag_map.items():
+                if (pos[0]-self.curr_destination[0])**2 + (pos[1]-self.curr_destination[1])**2 < FALLBACK_DIST_THRESH:
+                    print('APRILTAG CLOSE TO TARGET, FALLBACK')
+                    if final_location == "OUR_CLOSET" or final_location == "OUR_ROOM":
+                        self.curr_destination[1] += 0.05
+                    else:
+                        self.curr_destination[1] -= 0.05
+
                 if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
                     print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
                     self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
@@ -726,14 +736,19 @@ if __name__ == "__main__":
             elif _robot.curr_state == "GRIP_DROP":
                 _robot.grip_drop()
             elif _robot.curr_state == "MOVE_OUR_CLOSET":
+                _robot.curr_destination = OUR_CLOSET_PICKUP
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], "OUR_CLOSET")
             elif _robot.curr_state == "MOVE_OUR_ROOM":
+                _robot.curr_destination = OUR_ROOM_MOVE
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], "OUR_ROOM")
             elif _robot.curr_state == "MOVE_HALLWAY":
+                _robot.curr_destination = HALLWAY_MOVE
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, HALLWAY_MOVE[0], HALLWAY_MOVE[1], "HALLWAY")
             elif _robot.curr_state == "MOVE_THEIR_ROOM":
+                _robot.curr_destination = THEIR_ROOM_MOVE
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], "THEIR_ROOM")
             elif _robot.curr_state == "MOVE_THEIR_CLOSET":
+                _robot.curr_destination = THEIR_CLOSET_PICKUP
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], "THEIR_CLOSET")
             elif _robot.curr_state == "AVOID_OBSTACLE_APRILTAG":
                 frame = _robot.avoid_obstacle(frame, "APRILTAG", yolo_detections, apriltag_detections)
