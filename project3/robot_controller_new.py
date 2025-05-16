@@ -114,10 +114,10 @@ class Robot():
         self.avoid_time_buffer = 0
         
         self.apriltag_map = {}
-        self.apriltag_map["OUR_CLOSET"] = []
-        self.apriltag_map["OUR_ROOM"] = []
-        self.apriltag_map["THEIR_CLOSET"] = []
-        self.apriltag_map["THEIR_ROOM"] = []
+        self.apriltag_map["OUR_CLOSET"] = {}
+        self.apriltag_map["OUR_ROOM"] = {}
+        self.apriltag_map["THEIR_CLOSET"] = {}
+        self.apriltag_map["THEIR_ROOM"] = {}
         
         # map controller
         #self.map = MapController(ep_robot)
@@ -374,8 +374,7 @@ class Robot():
     
     def get_avoid_apriltag_waypoint(self, desired_x, desired_y):
         avoid_apriltag_waypoint = None
-        for aprtag in self.apriltag_map[self.get_current_location()]:
-            tag, pos = aprtag
+        for tag, pos in self.apriltag_map[self.get_current_location()].items():
             # https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
             dist_to_lineseg = math.abs((desired_y-self.world_position[1])*pos[0] - (desired_x-self.world_position[0])*pos[1] + desired_x*self.world_position[1] - desired_y*self.world_position[0])
             dist_to_lineseg /= math.sqrt((desired_y-self.world_position[1])**2 + (desired_x-self.world_position[0])**2)
@@ -400,6 +399,7 @@ class Robot():
         if avoid_obstacles:
             ret = self.get_avoid_apriltag_waypoint(desired_x, desired_y)
             if ret is not None:
+                print(f'OBSTACLE IN PLANNED PATH - ADDING WAYPOINT {ret[0], ret[1]}')
                 return self.move_to_xy(ret[0], ret[1], desired_heading, final_location, avoid_obstacles, apriltag_mem, frame)
         
         err_x_w = self.world_position[0] - desired_x # x error in world frame
@@ -474,7 +474,7 @@ class Robot():
                     t_wa_x = T_wa[0, 3]
                     t_wa_y = T_wa[1, 3]
                     
-                    self.apriltag_map[self.get_current_location()].append((detection.tag_id, (t_wa_x, t_wa_y)))
+                    self.apriltag_map[self.get_current_location()][detection.tag_id] = (t_wa_x, t_wa_y)
                     
                     # print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
