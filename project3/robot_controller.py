@@ -30,11 +30,11 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
-APRILTAG_CLOSE_TRESH_VISION = 0.04
-APRILTAG_CLOSE_TRESH_MAPPED = 0.15
-ROBOT_CLOSE_THRESH = 0.05
-IR_AVOID_THRESH = 400
-IR_SAFE_THRESH = 425
+APRILTAG_CLOSE_TRESH_VISION = 0.085
+APRILTAG_CLOSE_TRESH_MAPPED = 0.05
+ROBOT_CLOSE_THRESH = 0.1
+IR_AVOID_THRESH = 100
+IR_SAFE_THRESH = 125
 PICKUP_TIMER_ABORT = 50
 AVOID_POST_TIME_BUFFER = 0
 APRILTAG_IN_THE_WAY_BUFFER = 0.1
@@ -133,11 +133,11 @@ class Robot():
         self.apriltag_map = {} # key = tag id, value = world position
         
         # map controller
-        #self.map = MapController(ep_robot)
+        #self.map = MapController(ep_robot)z
 
         # IBVS controller
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
-        self.controller.set_lambda_matrix([1.8, 0.5]) # robot y velocity; robot x velocity
+        self.controller.set_lambda_matrix([2.0, 0.75]) # robot y velocity; robot x velocity
         self.controller.set_desired_points(LEGO_BIG_DESIRED)
         
         self.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
@@ -222,14 +222,14 @@ class Robot():
         time.sleep(1.0)
         self.ep_gripper.pause()
         
-        self.ep_arm.moveto(x=200, y=-10).wait_for_completed(2.0)
+        self.ep_arm.moveto(x=200, y=-10).wait_for_completed(3.0)
         time.sleep(2.0)
         
         self.curr_state = "DONE_WAIT"
         
     def grip_drop(self):
 
-        self.ep_arm.moveto(x=200, y=-50).wait_for_completed(2.0)
+        self.ep_arm.moveto(x=200, y=-50).wait_for_completed(3.0)
         time.sleep(2.0)
         
         self.ep_gripper.open(power=125)
@@ -437,6 +437,7 @@ class Robot():
                 cls, corners, depth, detected_block_lines_hough = d
                 if cls == 0: # robot detected
                     # print(f'ROBOT DEPTH: {depth}')
+                    print(f'robot depth: {depth}')
                     intheway = (depth < ROBOT_CLOSE_THRESH)
                     if intheway:
                         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
@@ -456,20 +457,20 @@ class Robot():
                     self.prev_state = self.curr_state
                     self.curr_state = "AVOID_OBSTACLE_APRILTAG"
 
-            for tag, pos in self.apriltag_map.items():
-                if (pos[0]-self.curr_destination[0])**2 + (pos[1]-self.curr_destination[1])**2 < FALLBACK_DIST_THRESH:
-                    print('APRILTAG CLOSE TO TARGET, FALLBACK')
-                    if final_location == "OUR_CLOSET" or final_location == "OUR_ROOM":
-                        self.curr_destination = (self.curr_destination[0], self.curr_destination[1] + 0.05)
-                    else:
-                        self.curr_destination = (self.curr_destination[0], self.curr_destination[1] - 0.05)
+            # for tag, pos in self.apriltag_map.items():
+            #     if (pos[0]-self.curr_destination[0])**2 + (pos[1]-self.curr_destination[1])**2 < FALLBACK_DIST_THRESH:
+            #         print('APRILTAG CLOSE TO TARGET, FALLBACK')
+            #         if final_location == "OUR_CLOSET" or final_location == "OUR_ROOM":
+            #             self.curr_destination = (self.curr_destination[0], self.curr_destination[1] + 0.05)
+            #         else:
+            #             self.curr_destination = (self.curr_destination[0], self.curr_destination[1] - 0.05)
 
-                if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH_MAPPED:
-                    print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
-                    self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-                    self.prev_state = self.curr_state
-                    self.curr_state = "AVOID_OBSTACLE_APRILTAG"
-                    intheway=True
+            #     if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH_MAPPED:
+            #         print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+            #         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+            #         self.prev_state = self.curr_state
+            #         self.curr_state = "AVOID_OBSTACLE_APRILTAG"
+            #         intheway=True
             
             return frame
         
@@ -535,17 +536,17 @@ class Robot():
                         # bottom_left = tuple(pts[3][0])  # Fourth corner
                         print(f'top left: {top_left}')
                         if top_left[0] > frame.shape[1]/2:    # right side, move left
-                            self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                            self.ep_chassis.drive_speed(x=0.0, y=-0.1, z=0.0, timeout=5)
                         else:               # left side, move right
-                            self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MAX, z=0.0, timeout=5)
+                            self.ep_chassis.drive_speed(x=0.0, y=0.1, z=0.0, timeout=5)
                         
                         return frame
             
-            for tag, pos in self.apriltag_map.items():
-                if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH_MAPPED:
-                    #print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
-                    self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
-                    return frame
+            # for tag, pos in self.apriltag_map.items():
+            #     if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH_MAPPED:
+            #         #print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+            #         self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+            #         return frame
             
             # print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
@@ -558,20 +559,21 @@ class Robot():
             for i, d in enumerate(yolo_detections):
                 cls, corners, depth, detected_block_lines_hough = d
                 if cls == 0: # robot detected
+                    print(f'avoid robot depth: {depth}')
                     intheway = (depth < ROBOT_CLOSE_THRESH)
                     if intheway:
                         # print("Theres a robot thats too close still")
                         
                         if corners[0] > 0:  # right side, move left
-                            self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                            self.ep_chassis.drive_speed(x=0.0, y=-0.1, z=0.0, timeout=5)
                         else:               # left side, move right
-                            self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MAX, z=0.0, timeout=5)
+                            self.ep_chassis.drive_speed(x=0.0, y=0.1, z=0.0, timeout=5)
                         
                         return frame
             
             # print("Obstacle avoided")
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-            self.curr_state = self.prev_state
+            self.curr_state = "MOVE_DESTINATION"
             self.avoid_time_buffer = 0
             return frame
         elif object == "IR_SENSOR":
@@ -582,7 +584,7 @@ class Robot():
             else:
                 # print("Obstacle avoided")
                 self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-                self.curr_state = self.prev_state
+                self.curr_state = "MOVE_DESTINATION"
                 self.avoid_time_buffer = 0
                 return frame
         elif object == "TIME_BUFFER":
@@ -592,7 +594,7 @@ class Robot():
                 return frame
             else:
                 self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-                self.curr_state = self.prev_state
+                self.curr_state = "MOVE_DESTINATION"
                 return frame
         else:
             return frame
@@ -623,6 +625,7 @@ if __name__ == "__main__":
     ep_camera = ep_robot.camera
     ep_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
     ep_led = ep_robot.led
+    ep_led.set_led(comp='all', r=90, g=0, b=0, effect='breath')
     
     x_vel = 0.0
     y_vel = 0.0
@@ -732,32 +735,32 @@ if __name__ == "__main__":
                 print(f"new action: {_robot.curr_action}")
                 if _robot.curr_action == Action.PICKUP_BLOCK_2x2 or _robot.curr_action == Action.PICKUP_BLOCK_2x4 or _robot.curr_action == Action.PICKUP_BLOCK_4x4:
                     _robot.curr_state = "MOVE_LEFTMOST_BLOCK_WAIT"
-                    _robot.ep_arm.moveto(x=200, y=-75).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-75).wait_for_completed(2.0)
                     # time.sleep(1.0)
                     _robot.state_timer = 0
                     print('curr action pickup')
                 elif _robot.curr_action == Action.DROP_BLOCK:
-                    _robot.ep_arm.moveto(x=200, y=-75).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-75).wait_for_completed(2.0)
                     # time.sleep(1.0)
                     _robot.curr_state = "GRIP_DROP"
                 elif _robot.curr_action == Action.MOVE_OUR_CLOSET:
-                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(2.0)
                     # time.sleep(1.0)
                     _robot.curr_state = "MOVE_OUR_CLOSET"
                 elif _robot.curr_action == Action.MOVE_OUR_ROOM:
-                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(2.0)
                     # time.sleep(1.0)
                     _robot.curr_state = "MOVE_OUR_ROOM"
                 elif _robot.curr_action == Action.MOVE_HALLWAY:
-                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(2.0)
                     # time.sleep(1.0)
                     _robot.curr_state = "MOVE_HALLWAY"
                 elif _robot.curr_action == Action.MOVE_THEIR_ROOM:
-                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(2.0)
                     # time.sleep(1.0)
                     _robot.curr_state = "MOVE_THEIR_ROOM"
                 elif _robot.curr_action == Action.MOVE_THEIR_CLOSET:
-                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-25).wait_for_completed(2.0)
                     # time.sleep(1.0)
                     _robot.curr_state = "MOVE_THEIR_CLOSET"
                 else:

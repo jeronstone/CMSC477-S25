@@ -3,7 +3,7 @@ import numpy as np
 from ultralytics import YOLO
 
 BLOCK_WIDTH = 0.064
-ROBOT_WIDTH = 0.45
+ROBOT_WIDTH = 0.3
 
 CLASSES = ["robot", "cone", "lego_big", "lego_medium", "lego_small", "center_line", "closet"]
 
@@ -65,7 +65,7 @@ class Vision():
                     detected_block_lines = cv2.Canny(detected_block_gray_gaussian, 100, 250, None, 3)
 
                     # detected_block_lines_hough = cv2.HoughLines(detected_block_lines, 1, np.pi / 180, 30, None, 0, 0)
-                    detected_block_lines_hough = cv2.HoughLinesP(detected_block_lines, 1, np.pi / 180, 20, None, 20, 1)
+                    detected_block_lines_hough = cv2.HoughLinesP(detected_block_lines, 1, np.pi / 180, 20, None, 10, 1)
                     # print(detected_block_lines_hough) 
 
                     depth_len = 0.0
