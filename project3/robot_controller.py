@@ -36,6 +36,8 @@ IR_AVOID_THRESH = 400
 IR_SAFE_THRESH = 425
 PICKUP_TIMER_ABORT = 50
 AVOID_POST_TIME_BUFFER = 0
+APRILTAG_IN_THE_WAY_BUFFER = 0.15
+APRILTAG_OBSTACLE_OFFSET = 0.25
 
 FEET_TO_METER_DIV_BY = 3.281
 
@@ -115,13 +117,20 @@ class Robot():
         self.state_timer = 0
 
         self.avoid_time_buffer = 0
+
+        self.apriltag_map = {}
+        self.apriltag_map["OUR_CLOSET"] = {}
+        self.apriltag_map["OUR_ROOM"] = {}
+        self.apriltag_map["HALLWAY"] = {}
+        self.apriltag_map["THEIR_CLOSET"] = {}
+        self.apriltag_map["THEIR_ROOM"] = {}
         
         # map controller
         #self.map = MapController(ep_robot)
 
         # IBVS controller
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
-        self.controller.set_lambda_matrix([1.9, 0.5]) # robot y velocity; robot x velocity
+        self.controller.set_lambda_matrix([1.75, 0.5]) # robot y velocity; robot x velocity
         self.controller.set_desired_points(LEGO_BIG_DESIRED)
         
         self.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
@@ -322,6 +331,27 @@ class Robot():
             # print(f"horiz_ang: {most_horizontal_angle} depth: {depth} err_nrm: {err_nrm} vels: x {robot_x_velocity} y {robot_y_velocity}")
             return frame
     
+    def get_avoid_apriltag_waypoint(self, desired_x, desired_y):
+        avoid_apriltag_waypoint = None
+        
+        if self.get_current_location == "HALLWAY":
+            return avoid_apriltag_waypoint
+        
+        for tag, pos in self.apriltag_map[self.get_current_location()].items():
+            # https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+            dist_to_lineseg = abs((desired_y-self.world_position[1])*pos[0] - (desired_x-self.world_position[0])*pos[1] + desired_x*self.world_position[1] - desired_y*self.world_position[0])
+            dist_to_lineseg /= math.sqrt((desired_y-self.world_position[1])**2 + (desired_x-self.world_position[0])**2)
+            
+            if dist_to_lineseg < APRILTAG_IN_THE_WAY_BUFFER:
+                dist_vect_x, dist_vect_y = desired_x - self.world_position[0], desired_y - self.world_position[1]
+                lineseg_norm = math.hypot(dist_vect_x, dist_vect_y)
+                unit_vec_x, unit_vec_y = -dist_vect_y / lineseg_norm, dist_vect_x / lineseg_norm                
+                avoid_apriltag_waypoint = (pos[0] + unit_vec_x*APRILTAG_OBSTACLE_OFFSET, pos[1] + unit_vec_y*APRILTAG_OBSTACLE_OFFSET)
+                print(f'AT {tag} at {pos} IN PATH - ADDING WAYPOINT {avoid_apriltag_waypoint}')
+                break # assume only 1 in the way ?
+        
+        return avoid_apriltag_waypoint
+
     '''
     Moves to global position x, y on the map using simple p loop and constant speed
     '''
@@ -373,20 +403,54 @@ class Robot():
                         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                         self.prev_state = self.curr_state
                         self.curr_state = "AVOID_OBSTACLE_ROBOT"
-                        return frame
+                        intheway=True
 
             # print(f"apriltag detector detected: {len(detections)} apriltags")
+            closest_twa = None
+            minscore = float('inf')
             for detection in apriltag_detections:
                 t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
                 distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
                 # print(f'Apriltag dist: {distance}')
+                
+                T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
+                                    [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
+                                    [R_ca[2,0], R_ca[2,1], R_ca[2,2], t_ca[2]],
+                                    [        0,         0,         0,       1]])
+                    
+                T_wa = self.T_w_bt @ T_ca
+                
+                t_wa_x = T_wa[0, 3]
+                t_wa_y = T_wa[1, 3]
+                
+                closeness_score = 0.3*distance
+                rotation_score = 0.7*np.linalg.norm((np.identity(3)-R_ca))
+
+                final_score = closeness_score+rotation_score
+
+                if (closest_twa is None or final_score < minscore):
+                    closest_twa = (t_wa_x, t_wa_y)
+                    minscore = final_score
+                
                 if distance < APRILTAG_CLOSE_TRESH:
                     self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                     self.prev_state = self.curr_state
                     self.curr_state = "AVOID_OBSTACLE_APRILTAG"
-                    return frame
+            
+            if closest_twa is not None:
+                self.apriltag_map[self.curr_location][detection.tag_id] = (closest_twa[0], closest_twa[1])
+                print(f'Updated map: {self.apriltag_map}')
+
+            for tag, pos in self.apriltag_map[self.get_current_location()].items():
+                if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
+                    print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+                    self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+                    self.prev_state = self.curr_state
+                    self.curr_state = "AVOID_OBSTACLE_APRILTAG"
+                    intheway=True
             
             return frame
+        
         else:
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             # time.sleep(0.1)
@@ -451,6 +515,12 @@ class Robot():
                             self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MAX, z=0.0, timeout=5)
                         
                         return frame
+            
+            for tag, pos in self.apriltag_map[self.get_current_location()].items():
+                if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
+                    #print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+                    self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                    return frame
             
             # print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
