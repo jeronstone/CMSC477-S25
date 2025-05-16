@@ -93,6 +93,7 @@ class Robot():
         self.curr_location = "OUR_ROOM"
 
         self.curr_destination = (0.0, 0.0)
+        self.did_initial_turn = False
 
         self.reported_heading = 0.0
         self.world_heading = 0.0
@@ -361,6 +362,36 @@ class Robot():
     Moves to global position x, y on the map using simple p loop and constant speed
     '''
     def move_to_xy(self, frame, yolo_detections, apriltag_detections, desired_x, desired_y, final_location):
+
+        if not self.did_initial_turn:
+            if self.curr_location == "OUR_CLOSET":
+                if final_location == "OUR_ROOM":
+                    desired_heading = 180
+            elif self.curr_location == "OUR_ROOM":
+                if final_location == "OUR_CLOSET":
+                    desired_heading = 0
+                elif final_location == "HALLWAY":
+                    desired_heading = 90
+            elif self.curr_location == "HALLWAY":
+                if final_location == "OUR_ROOM":
+                    desired_heading = -90
+                elif final_location == "THEIR_ROOM":
+                    desired_heading = 90
+            elif self.curr_location == "THEIR_ROOM":
+                if final_location == "HALLWAY":
+                    desired_heading = -90
+                elif final_location == "THEIR_CLOSET":
+                    desired_heading = 180
+            elif self.curr_location == "THEIR_CLOSET":
+                if final_location == "THEIR_ROOM":
+                    desired_heading = 0
+
+            turn_angle = ((desired_heading - np.rad2deg(_robot.world_heading) + 540) % 360) - 180
+            # turn_angle = desired_heading - np.rad2deg(self.world_heading)
+            self.ep_chassis.move(x=0, y=0, z=turn_angle, z_speed=60).wait_for_completed(2.0)
+
+            self.did_initial_turn = True
+            return frame
         
         err_x_w = self.world_position[0] - self.curr_destination[0] # x error in world frame
         err_y_w = self.world_position[1] - self.curr_destination[1] # y error in world frame
@@ -738,18 +769,23 @@ if __name__ == "__main__":
                 _robot.grip_drop()
             elif _robot.curr_state == "MOVE_OUR_CLOSET":
                 _robot.curr_destination = OUR_CLOSET_PICKUP
+                _robot.did_initial_turn = False
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], "OUR_CLOSET")
             elif _robot.curr_state == "MOVE_OUR_ROOM":
                 _robot.curr_destination = OUR_ROOM_MOVE
+                _robot.did_initial_turn = False
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], "OUR_ROOM")
             elif _robot.curr_state == "MOVE_HALLWAY":
                 _robot.curr_destination = HALLWAY_MOVE
+                _robot.did_initial_turn = False
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, HALLWAY_MOVE[0], HALLWAY_MOVE[1], "HALLWAY")
             elif _robot.curr_state == "MOVE_THEIR_ROOM":
                 _robot.curr_destination = THEIR_ROOM_MOVE
+                _robot.did_initial_turn = False
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], "THEIR_ROOM")
             elif _robot.curr_state == "MOVE_THEIR_CLOSET":
                 _robot.curr_destination = THEIR_CLOSET_PICKUP
+                _robot.did_initial_turn = False
                 frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], "THEIR_CLOSET")
             elif _robot.curr_state == "AVOID_OBSTACLE_APRILTAG":
                 frame = _robot.avoid_obstacle(frame, "APRILTAG", yolo_detections, apriltag_detections)
