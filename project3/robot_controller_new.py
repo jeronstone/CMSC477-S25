@@ -29,12 +29,12 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
-APRILTAG_CLOSE_TRESH = 0.15
-ROBOT_CLOSE_THRESH = 0.15
+APRILTAG_CLOSE_TRESH = 0.05
+ROBOT_CLOSE_THRESH = 0.1
 IR_AVOID_THRESH = 375
 IR_SAFE_THRESH = 400
 PICKUP_TIMER_ABORT = 150
-AVOID_POST_TIME_BUFFER = 10
+AVOID_POST_TIME_BUFFER = 0
 APRILTAG_IN_THE_WAY_BUFFER = 0.15
 APRILTAG_OBSTACLE_OFFSET = 0.25
 
@@ -116,6 +116,7 @@ class Robot():
         self.apriltag_map = {}
         self.apriltag_map["OUR_CLOSET"] = {}
         self.apriltag_map["OUR_ROOM"] = {}
+        self.apriltag_map["HALLWAY"] = {}
         self.apriltag_map["THEIR_CLOSET"] = {}
         self.apriltag_map["THEIR_ROOM"] = {}
         
@@ -492,6 +493,7 @@ class Robot():
                     
                     # print(f'Apriltag dist: {distance}')
                     if distance < APRILTAG_CLOSE_TRESH:
+                        print(f'Apriltag dist (TOO CLOSE): {distance}')
                         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                         self.prev_state = self.curr_state
                         self.curr_state = "AVOID_OBSTACLE_APRILTAG"
@@ -503,12 +505,12 @@ class Robot():
                         
                 for tag, pos in self.apriltag_map[self.get_current_location()].items():
                     if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
+                        print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
                         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                         self.prev_state = self.curr_state
                         self.curr_state = "AVOID_OBSTACLE_APRILTAG"
                         intheway=True
                         break
-                    
                 
                 if intheway:
                     return fr, 0
@@ -553,6 +555,12 @@ class Robot():
                             self.ep_chassis.drive_speed(x=0.0, y=0.5, z=0.0, timeout=5)
                         
                         return 1
+                    
+            for tag, pos in self.apriltag_map[self.get_current_location()].items():
+                if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
+                    #print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+                    self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                    return 1
             
             # print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
@@ -699,9 +707,9 @@ if __name__ == "__main__":
         elif _robot.curr_state == "MOVE_OUR_CLOSET":
             fr, ret = _robot.move_to_xy(OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 0, "OUR_CLOSET", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_OUR_ROOM":
-            fr, ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 90, "OUR_ROOM")
+            fr, ret = _robot.move_to_xy(OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 90, "OUR_ROOM", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_HALLWAY":
-            fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 90, "HALLWAY")
+            fr, ret = _robot.move_to_xy(HALLWAY_MOVE[0], HALLWAY_MOVE[1], 90, "HALLWAY", avoid_obstacles=True, frame=frame)
         elif _robot.curr_state == "MOVE_THEIR_ROOM":
             fr, ret = _robot.move_to_xy(THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], -179, "THEIR_ROOM")
         elif _robot.curr_state == "MOVE_THEIR_CLOSET":
