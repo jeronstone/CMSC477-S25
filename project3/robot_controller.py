@@ -732,12 +732,12 @@ if __name__ == "__main__":
                 print(f"new action: {_robot.curr_action}")
                 if _robot.curr_action == Action.PICKUP_BLOCK_2x2 or _robot.curr_action == Action.PICKUP_BLOCK_2x4 or _robot.curr_action == Action.PICKUP_BLOCK_4x4:
                     _robot.curr_state = "MOVE_LEFTMOST_BLOCK_WAIT"
-                    _robot.ep_arm.moveto(x=200, y=-65).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-75).wait_for_completed(1.0)
                     # time.sleep(1.0)
                     _robot.state_timer = 0
                     print('curr action pickup')
                 elif _robot.curr_action == Action.DROP_BLOCK:
-                    _robot.ep_arm.moveto(x=200, y=-65).wait_for_completed(1.0)
+                    _robot.ep_arm.moveto(x=200, y=-75).wait_for_completed(1.0)
                     # time.sleep(1.0)
                     _robot.curr_state = "GRIP_DROP"
                 elif _robot.curr_action == Action.MOVE_OUR_CLOSET:
@@ -781,7 +781,7 @@ if __name__ == "__main__":
                 _robot.curr_destination = OUR_ROOM_MOVE
                 _robot.curr_destination_location = "OUR_ROOM"
                 _robot.did_initial_turn = False
-                _robot.initial_turn_to_location(frame, "OUR_CLOSET")
+                _robot.initial_turn_to_location(frame, "OUR_ROOM")
             elif _robot.curr_state == "MOVE_HALLWAY":
                 _robot.curr_destination = HALLWAY_MOVE
                 _robot.curr_destination_location = "HALLWAY"
