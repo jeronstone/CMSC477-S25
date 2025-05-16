@@ -30,8 +30,8 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
-APRILTAG_CLOSE_TRESH = 0.05
-ROBOT_CLOSE_THRESH = 0.1
+APRILTAG_CLOSE_TRESH = 0.03
+ROBOT_CLOSE_THRESH = 0.05
 IR_AVOID_THRESH = 400
 IR_SAFE_THRESH = 425
 PICKUP_TIMER_ABORT = 50
@@ -118,19 +118,20 @@ class Robot():
 
         self.avoid_time_buffer = 0
 
-        self.apriltag_map = {}
-        self.apriltag_map["OUR_CLOSET"] = {}
-        self.apriltag_map["OUR_ROOM"] = {}
-        self.apriltag_map["HALLWAY"] = {}
-        self.apriltag_map["THEIR_CLOSET"] = {}
-        self.apriltag_map["THEIR_ROOM"] = {}
+        # self.apriltag_map = {}
+        # self.apriltag_map["OUR_CLOSET"] = {}
+        # self.apriltag_map["OUR_ROOM"] = {}
+        # self.apriltag_map["HALLWAY"] = {}
+        # self.apriltag_map["THEIR_ROOM"] = {}
+        # self.apriltag_map["THEIR_CLOSET"] = {}
+        self.apriltag_map = {} # key = tag id, value = world position
         
         # map controller
         #self.map = MapController(ep_robot)
 
         # IBVS controller
         self.controller = IBVS_Controller(control_mode='2xz', interaction_mode='mean', num_pts=4)
-        self.controller.set_lambda_matrix([1.75, 0.5]) # robot y velocity; robot x velocity
+        self.controller.set_lambda_matrix([1.8, 0.5]) # robot y velocity; robot x velocity
         self.controller.set_desired_points(LEGO_BIG_DESIRED)
         
         self.ep_arm.moveto(x=200, y=-25).wait_for_completed(1.0)
@@ -334,10 +335,10 @@ class Robot():
     def get_avoid_apriltag_waypoint(self, desired_x, desired_y):
         avoid_apriltag_waypoint = None
         
-        if self.get_current_location == "HALLWAY":
+        if self.curr_location == "HALLWAY":
             return avoid_apriltag_waypoint
         
-        for tag, pos in self.apriltag_map[self.get_current_location()].items():
+        for tag, pos in self.apriltag_map.items():
             # https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
             dist_to_lineseg = abs((desired_y-self.world_position[1])*pos[0] - (desired_x-self.world_position[0])*pos[1] + desired_x*self.world_position[1] - desired_y*self.world_position[0])
             dist_to_lineseg /= math.sqrt((desired_y-self.world_position[1])**2 + (desired_x-self.world_position[0])**2)
@@ -355,7 +356,7 @@ class Robot():
     '''
     Moves to global position x, y on the map using simple p loop and constant speed
     '''
-    def move_to_xy(self, frame, yolo_detections, apriltag_detections, desired_x, desired_y, desired_heading, final_location):
+    def move_to_xy(self, frame, yolo_detections, apriltag_detections, desired_x, desired_y, final_location):
         
         err_x_w = self.world_position[0] - desired_x # x error in world frame
         err_y_w = self.world_position[1] - desired_y # y error in world frame
@@ -411,37 +412,13 @@ class Robot():
             for detection in apriltag_detections:
                 t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
                 distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
-                # print(f'Apriltag dist: {distance}')
-                
-                T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
-                                    [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
-                                    [R_ca[2,0], R_ca[2,1], R_ca[2,2], t_ca[2]],
-                                    [        0,         0,         0,       1]])
-                    
-                T_wa = self.T_w_bt @ T_ca
-                
-                t_wa_x = T_wa[0, 3]
-                t_wa_y = T_wa[1, 3]
-                
-                closeness_score = 0.3*distance
-                rotation_score = 0.7*np.linalg.norm((np.identity(3)-R_ca))
-
-                final_score = closeness_score+rotation_score
-
-                if (closest_twa is None or final_score < minscore):
-                    closest_twa = (t_wa_x, t_wa_y)
-                    minscore = final_score
                 
                 if distance < APRILTAG_CLOSE_TRESH:
                     self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
                     self.prev_state = self.curr_state
                     self.curr_state = "AVOID_OBSTACLE_APRILTAG"
-            
-            if closest_twa is not None:
-                self.apriltag_map[self.curr_location][detection.tag_id] = (closest_twa[0], closest_twa[1])
-                print(f'Updated map: {self.apriltag_map}')
 
-            for tag, pos in self.apriltag_map[self.get_current_location()].items():
+            for tag, pos in self.apriltag_map.items():
                 if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
                     print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
                     self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
@@ -509,22 +486,22 @@ class Robot():
                         # top_right = tuple(pts[1][0])  # Second corner
                         # bottom_right = tuple(pts[2][0])  # Third corner
                         # bottom_left = tuple(pts[3][0])  # Fourth corner
-                        if top_left[0] > 0:    # right side, move left
+                        if top_left[0] > frame.shape[1]/2:    # right side, move left
                             self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
                         else:               # left side, move right
                             self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MAX, z=0.0, timeout=5)
                         
                         return frame
             
-            for tag, pos in self.apriltag_map[self.get_current_location()].items():
+            for tag, pos in self.apriltag_map.items():
                 if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH:
                     #print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
-                    self.ep_chassis.drive_speed(x=0.0, y=-0.5, z=0.0, timeout=5)
+                    self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
                     return frame
             
             # print("Obstacle avoided")
             # at this point, all detections were greater than thresh, or there were 0 detections
-            self.curr_state = "AVOID_POST_TIME_BUFFER"
+            self.curr_state = self.prev_state
             self.avoid_time_buffer = 0
             return frame
                 
@@ -545,7 +522,8 @@ class Robot():
                         return frame
             
             # print("Obstacle avoided")
-            self.curr_state = "AVOID_POST_TIME_BUFFER"
+            self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+            self.curr_state = self.prev_state
             self.avoid_time_buffer = 0
             return frame
         elif object == "IR_SENSOR":
@@ -555,7 +533,8 @@ class Robot():
                 return frame
             else:
                 # print("Obstacle avoided")
-                self.curr_state = "AVOID_POST_TIME_BUFFER"
+                self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+                self.curr_state = self.prev_state
                 self.avoid_time_buffer = 0
                 return frame
         elif object == "TIME_BUFFER":
@@ -570,7 +549,24 @@ class Robot():
         else:
             return frame
 
+def draw_detections(frame, detections, coords=None):
+    for detection in detections:
+        pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
 
+        frame = cv2.polylines(frame, [pts], isClosed=True, color=(0, 0, 255), thickness=2)
+
+        top_left = tuple(pts[0][0])  # First corner
+        top_right = tuple(pts[1][0])  # Second corner
+        bottom_right = tuple(pts[2][0])  # Third corner
+        bottom_left = tuple(pts[3][0])  # Fourth corner
+        cv2.line(frame, top_left, bottom_right, color=(0, 0, 255), thickness=2)
+        cv2.line(frame, top_right, bottom_left, color=(0, 0, 255), thickness=2)
+        # center_x = int(((top_left[0] + top_right[0])/2) - 4*len(coords[detection.tag_id]))
+        # center_y = int((top_left[1] + bottom_left[1])/2)
+        cv2.putText(frame, str(detection.tag_id), (top_left[0], top_left[1] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        # cv2.putText(frame, str(detection.tag_id) + ":" + coords[detection.tag_id], (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+    return frame
 
 if __name__ == "__main__":
     ep_robot = robot.Robot()
@@ -609,6 +605,75 @@ if __name__ == "__main__":
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray.astype(np.uint8)
         apriltag_detections = _robot.apriltag_detector.find_tags(gray)
+
+        frame = draw_detections(frame, apriltag_detections, )
+
+        # add apriltag detections to map
+        closest_twa = None
+        closest_tag = None
+        minscore = float('inf')
+        for detection in apriltag_detections:
+            t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
+            distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+            # print(f'Apriltag dist: {distance}')
+            
+            T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
+                             [R_ca[1,0], R_ca[1,1], R_ca[1,2], t_ca[1]],
+                             [R_ca[2,0], R_ca[2,1], R_ca[2,2], t_ca[2]],
+                             [        0,         0,         0,       1]])
+            # T_ca = np.array([[0, 0, 0, t_ca[0]], 
+            #                  [0, 0, 0, t_ca[1]],
+            #                  [0, 0, 0, t_ca[2]],
+            #                  [0, 0, 0,       1]])
+
+            T_bc = np.array([[0,  0, 1, 0],
+                             [1,  0, 0, 0],
+                             [0, -1, 0, 0],
+                             [0,  0, 0, 1]])
+                
+            T_wa = _robot.T_w_bt @ T_bc @ T_ca
+            
+            t_wa_x = T_wa[0, 3]
+            t_wa_y = T_wa[1, 3]
+            
+            closeness_score = 0.4*distance
+            rotation_score = 0.6*np.linalg.norm((np.identity(3)-R_ca))
+
+            final_score = closeness_score+rotation_score
+
+            if (closest_twa is None or (final_score < minscore and distance < 1.0)):
+                closest_twa = (t_wa_x, t_wa_y)
+                closest_tag = detection.tag_id
+                minscore = final_score
+        
+        if closest_twa is not None:
+            _robot.apriltag_map[closest_tag] = (closest_twa[0], closest_twa[1])
+            print(f'Updated map: {_robot.apriltag_map}')
+
+        #plt.clf()
+        if len(position_history_x) > 2048:
+            position_history_x = position_history_x[-2048:]
+        if len(position_history_y) > 2048:
+            position_history_x = position_history_y[-2048:]
+        if len(position_history_x) > len(position_history_y):
+            position_history_x = position_history_x[-len(position_history_y):]
+        if len(position_history_y) > len(position_history_x):
+            position_history_y = position_history_y[-len(position_history_x):]
+        ax.plot(position_history_x, position_history_y, 'r-')
+        ax.plot(_robot.world_position[0], _robot.world_position[1], 'bo')
+        for tag, pos in _robot.apriltag_map.items():
+            ax.plot(pos[0], pos[1], 'kx')
+        plt.draw()
+        plt.pause(0.001)
+        ax.clear()
+        ax.set_xlim(0, 4)
+        ax.set_ylim(0, 7)
+        
+        if frame is not None:
+            cv2.imshow("img", frame)
+            key = cv2.waitKey(1)
+            if key == ord('z'):
+                break
 
         if OP_MODE == "AUTO":
             if state_done_flag:
@@ -660,15 +725,15 @@ if __name__ == "__main__":
             elif _robot.curr_state == "GRIP_DROP":
                 _robot.grip_drop()
             elif _robot.curr_state == "MOVE_OUR_CLOSET":
-                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], 0, "OUR_CLOSET")
+                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_CLOSET_PICKUP[0], OUR_CLOSET_PICKUP[1], "OUR_CLOSET")
             elif _robot.curr_state == "MOVE_OUR_ROOM":
-                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], 90, "OUR_ROOM")
+                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, OUR_ROOM_MOVE[0], OUR_ROOM_MOVE[1], "OUR_ROOM")
             elif _robot.curr_state == "MOVE_HALLWAY":
-                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, HALLWAY_MOVE[0], HALLWAY_MOVE[1], 90, "HALLWAY")
+                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, HALLWAY_MOVE[0], HALLWAY_MOVE[1], "HALLWAY")
             elif _robot.curr_state == "MOVE_THEIR_ROOM":
-                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], 180, "THEIR_ROOM")
+                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_ROOM_MOVE[0], THEIR_ROOM_MOVE[1], "THEIR_ROOM")
             elif _robot.curr_state == "MOVE_THEIR_CLOSET":
-                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], 180, "THEIR_CLOSET")
+                frame = _robot.move_to_xy(frame, yolo_detections, apriltag_detections, THEIR_CLOSET_PICKUP[0], THEIR_CLOSET_PICKUP[1], "THEIR_CLOSET")
             elif _robot.curr_state == "AVOID_OBSTACLE_APRILTAG":
                 frame = _robot.avoid_obstacle(frame, "APRILTAG", yolo_detections, apriltag_detections)
             elif _robot.curr_state == "AVOID_OBSTACLE_ROBOT":
@@ -730,29 +795,6 @@ if __name__ == "__main__":
                 break
             _robot.ep_chassis.drive_speed(x=x_vel, y=y_vel, z=z_vel, timeout=5)
             print(f"world_position: {_robot.world_position} world_heading: {_robot.world_heading}")
-        
-        if len(position_history_x) > 2048:
-            position_history_x = position_history_x[-2048:]
-        if len(position_history_y) > 2048:
-            position_history_x = position_history_y[-2048:]
-        if len(position_history_x) > len(position_history_y):
-            position_history_x = position_history_x[-len(position_history_y):]
-        if len(position_history_y) > len(position_history_x):
-            position_history_y = position_history_y[-len(position_history_x):]
-        ax.plot(position_history_x, position_history_y, 'r')
-        plt.draw()
-        plt.pause(0.01)
-        
-        if frame is not None:
-            cv2.imshow("img", frame)
-            key = cv2.waitKey(1)
-            if key == ord('z'):
-                break
-        
-        '''
-        cv2.imshow("img", frame)
-        
-        '''
 
     plt.close()
     cv2.destroyAllWindows()
