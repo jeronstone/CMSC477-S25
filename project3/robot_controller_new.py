@@ -188,7 +188,7 @@ class Robot():
         else:
             return "undef"
         
-    def update_state_with_detections(self, location: str):
+    def update_state_with_detections(self, location):
 
         fr, detections = self.vision.get_yolo_pred(frame, hough=False)
 
@@ -519,15 +519,12 @@ class Robot():
         else:
             self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             time.sleep(0.1)
-            self.ep_chassis.move(x=0, y=0, z=-int(np.rad2deg(self.world_heading) - desired_heading), z_speed=60).wait_for_completed(3.0)
-            time.sleep(3.0)
+            self.ep_chassis.move(x=0, y=0, z=-int(np.rad2deg(self.world_heading) - desired_heading), z_speed=45).wait_for_completed(2.0)
+            time.sleep(2.0)
             #self.set_frame_rotation(desired_heading)
             self.minimax_agent.curr_state.world_position = final_location
             self.prev_state = self.curr_state
-            if final_location == "HALLWAY":
-                self.curr_state = "DONE"
-            else:
-                self.curr_state = "UPDATE_STATE"
+            self.curr_state = "UPDATE_STATE"
             return None, 0
         
     def avoid_obstacle(self, object, frame):
@@ -630,8 +627,6 @@ if __name__ == "__main__":
     ax.set_ylim(0, 7)
     
     state_done_flag = False
-
-    frame = None
         
     while True:
         
@@ -667,6 +662,7 @@ if __name__ == "__main__":
             time.sleep(0.1)
             continue
         
+        
         if state_done_flag:
             print("done flag true")
             state_done_flag = False
@@ -700,7 +696,7 @@ if __name__ == "__main__":
                 _robot.curr_state = "DONE"
         
         print(f"curr state: {_robot.curr_state}")
-        fr = frame
+        fr = None
         if _robot.curr_state == "MOVE_LEFTMOST_BLOCK":
             fr, ret = _robot.move_to_leftmost_block(frame)
             print(f'state timer: {_robot.state_timer}')
@@ -727,8 +723,7 @@ if __name__ == "__main__":
         elif _robot.curr_state == "AVOID_POST_TIME_BUFFER":
             ret = _robot.avoid_obstacle("TIME_BUFFER", frame)
         elif _robot.curr_state == "UPDATE_STATE":
-            fr, ret = _robot.update_state_with_detections(_robot.get_current_location())
-            print(_robot.minimax_agent.curr_state)
+            fr, ret = _robot.update_state_with_detections(_robot.minimax_agent.curr_state.world_position)
         elif _robot.curr_state == "DONE":
             state_done_flag = True
         
