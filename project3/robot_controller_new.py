@@ -395,7 +395,12 @@ class Robot():
     def move_to_xy(self, desired_x, desired_y, desired_heading, final_location, avoid_obstacles=False, apriltag_mem=False, frame=None):
         
         if (avoid_obstacles or apriltag_mem) and frame is None:
-            return None, -1        
+            return None, -1
+        
+        if avoid_obstacles:
+            ret = self.get_avoid_apriltag_waypoint(desired_x, desired_y)
+            if ret is not None:
+                return self.move_to_xy(ret[0], ret[1], desired_heading, final_location, avoid_obstacles, apriltag_mem, frame)
         
         err_x_w = self.world_position[0] - desired_x # x error in world frame
         err_y_w = self.world_position[1] - desired_y # y error in world frame
