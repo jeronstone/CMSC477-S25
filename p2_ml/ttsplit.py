@@ -8,7 +8,7 @@ def split_images(source_folder, folder_80, folder_20):
     os.makedirs(folder_20, exist_ok=True)
     
     # Get list of image files
-    images = [f for f in os.listdir(source_folder) if f.lower().endswith(('png'))]
+    images = [f for f in os.listdir(source_folder) if f.lower().endswith(('jpg'))]
 
     # Shuffle the list randomly
     random.shuffle(images)
@@ -29,8 +29,8 @@ def split_images(source_folder, folder_80, folder_20):
     print(f"Moved {len(images_20)} images to {folder_20}")
 
 # Example usage
-source_folder = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_v3\\"
-folder_80 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_v3\train\\"
-folder_20 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_v3\validation\\"
+source_folder = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_f\\"
+folder_80 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_p3f\train\\"
+folder_20 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_p3f\validation\\"
 
 split_images(source_folder, folder_80, folder_20)

@@ -31,15 +31,20 @@ ROBOT_Z_ANGULAR_VELOCITY_MAX = 0.5
 DIST_THRESH_X = 0.1
 DIST_THRESH_Y = 0.1
 APRILTAG_CLOSE_TRESH_VISION = 0.085
-APRILTAG_CLOSE_TRESH_MAPPED = 0.05
+APRILTAG_CLOSE_TRESH_MAPPED = 0.035
 ROBOT_CLOSE_THRESH = 0.1
-IR_AVOID_THRESH = 100
-IR_SAFE_THRESH = 125
+IR_AVOID_THRESH = 125
+IR_SAFE_THRESH = 130
 PICKUP_TIMER_ABORT = 50
 AVOID_POST_TIME_BUFFER = 0
 APRILTAG_IN_THE_WAY_BUFFER = 0.1
 APRILTAG_OBSTACLE_OFFSET = 0.25
 FALLBACK_DIST_THRESH = 0.25
+
+YOLO_MODEL_ROBOT = 0
+YOLO_MODEL_2X2 = 4
+YOLO_MODEL_2X4 = 3
+YOLO_MODEL_4X4 = 2
 
 FEET_TO_METER_DIV_BY = 3.281
 
@@ -55,11 +60,11 @@ THEIR_CLOSET_BOUNDARY = [(0.25/FEET_TO_METER_DIV_BY, 16.0/FEET_TO_METER_DIV_BY),
 # pickup/dropoff locations
 OUR_CLOSET_PICKUP = (2.62, 1.15)
 OUR_CLOSET_DROPOFF = (3.0, 0.75) # increment y by 0.2 each time we drop off
-OUR_ROOM_MOVE = (1.96, 1.08)
+OUR_ROOM_MOVE = (1.96, 1.4)
 OUR_ROOM_PICKUP = (2.585, 1.110)
 OUR_ROOM_DROPOFF = (1.5, 2.20) # decrement y by 0.2 each time we drop off
 HALLWAY_MOVE = (1.96, 3.28)
-THEIR_ROOM_MOVE = (1.96, 5.50)
+THEIR_ROOM_MOVE = (1.96, 5.40)
 THEIR_ROOM_PICKUP = (2.142, 5.426)
 THEIR_ROOM_DROPOFF = (2.9, 4.1) # increment y by 0.2 each time we drop off
 THEIR_CLOSET_PICKUP = (0.72, 5.37)
@@ -109,7 +114,7 @@ class Robot():
         self.calculated_initial_matrices = False # whether we have calculated T_b0_i
 
         # vision controller
-        self.vision = Vision(r"..\runs\detect\train2\weights\best.pt")
+        self.vision = Vision(r"..\runs\detect\train5\weights\best.pt", ["robot", "cone", "lego_big", "lego_medium", "lego_small", "center_line", "closet"])
         _, _ = self.vision.get_yolo_pred(cv2.imread(r"project3/dummy.png")) # warm up[] model
         K = np.array([[314, 0, 320], [0, 314, 180], [0, 0, 1]]) # Camera focal length and center pixel
         marker_size_m = 0.153 # Size of the AprilTag in meters
@@ -205,9 +210,9 @@ class Robot():
             block_list = [block for block in self.minimax_agent.curr_state.block_positions if block[1] != location] # remove blocks that were previously reported at this location
             for detection in yolo_detections:
                 cls, _, _, _ = detection
-                if cls == 0: # enemy robot
+                if cls == YOLO_MODEL_ROBOT: # enemy robot
                     self.minimax_agent.curr_state.their_position = location
-                elif 2 <= cls <= 4: # block
+                elif YOLO_MODEL_4X4 <= cls <= YOLO_MODEL_2X2: # block
                     block_list.append(("4x4", location))
             self.minimax_agent.curr_state.block_positions = block_list
 
@@ -389,6 +394,17 @@ class Robot():
 
         self.curr_state = "MOVE_DESTINATION"
 
+    def push_blocks(self):
+        self.state_timer += 1
+        if self.state_timer < 3:
+            self.ep_chassis.drive_speed(x=0.5, y=0, z=0.0, timeout=5)
+        else:
+            self.ep_chassis.drive_speed(x=0, y=-0.5, z=0.0, timeout=5)
+        
+        if self.state_timer > 8:
+            self.ep_chassis.drive_speed(x=0, y=0, z=0.0, timeout=5)
+            self.state == "MOVE_OUR_CLOSET"
+        
     '''
     Moves to global position x, y on the map using simple p loop and constant speed
     '''
@@ -445,28 +461,30 @@ class Robot():
                         self.curr_state = "AVOID_OBSTACLE_ROBOT"
                         intheway=True
 
-            # print(f"apriltag detector detected: {len(detections)} apriltags")
-            closest_twa = None
-            minscore = float('inf')
-            for detection in apriltag_detections:
-                t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-                distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+            # print(f"apriltag detector detected: {len(apriltag_detections)} apriltags")
+            # closest_twa = None
+            # minscore = float('inf')
+            # for detection in apriltag_detections:
+            #     t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
+            #     distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
                 
-                if distance < APRILTAG_CLOSE_TRESH_VISION:
-                    self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
-                    self.prev_state = self.curr_state
-                    self.curr_state = "AVOID_OBSTACLE_APRILTAG"
+            #     print(f'APRILTAG DIST: {distance}')
+            #     if distance < APRILTAG_CLOSE_TRESH_VISION:
+            #         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
+            #         self.prev_state = self.curr_state
+            #         self.curr_state = "AVOID_OBSTACLE_APRILTAG"
 
             # for tag, pos in self.apriltag_map.items():
             #     if (pos[0]-self.curr_destination[0])**2 + (pos[1]-self.curr_destination[1])**2 < FALLBACK_DIST_THRESH:
             #         print('APRILTAG CLOSE TO TARGET, FALLBACK')
             #         if final_location == "OUR_CLOSET" or final_location == "OUR_ROOM":
-            #             self.curr_destination = (self.curr_destination[0], self.curr_destination[1] + 0.05)
+            #             self.curr_destination = (self.curr_destination[0], self.curr_destination[1] + 0.01)
             #         else:
-            #             self.curr_destination = (self.curr_destination[0], self.curr_destination[1] - 0.05)
+            #             self.curr_destination = (self.curr_destination[0], self.curr_destination[1] - 0.01)
 
-            #     if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH_MAPPED:
-            #         print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
+            #     euc_dist_to_apriltag = (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2
+            #     if euc_dist_to_apriltag < APRILTAG_CLOSE_TRESH_MAPPED:
+            #         print(f'APRILTAG CLOSE ({tag},{euc_dist_to_apriltag}), FROM MAP')
             #         self.ep_chassis.drive_speed(x=0.0, y=0.0, z=0.0, timeout=5)
             #         self.prev_state = self.curr_state
             #         self.curr_state = "AVOID_OBSTACLE_APRILTAG"
@@ -518,47 +536,62 @@ class Robot():
             return frame
         
     def avoid_obstacle(self, frame, object, yolo_detections, apriltag_detections):
-        # print(f'Avoiding {object}')
-        if object == "APRILTAG":
+        print(f'Avoiding {object}')
+        # if object == "APRILTAG":
             
-            if len(apriltag_detections) != 0:
-                for detection in apriltag_detections:
-                    t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
-                    distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
-                    # print(f'Apriltag dist: {distance}')
-                    if distance < APRILTAG_CLOSE_TRESH_VISION:
-                        # print("There's an Apriltag thats too close still")
+        #     if len(apriltag_detections) != 0:
+        #         for detection in apriltag_detections:
+        #             t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
+        #             distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+        #             # print(f'Apriltag dist: {distance}')
+        #             if distance < APRILTAG_CLOSE_TRESH_VISION:
+        #                 # print("There's an Apriltag thats too close still")
                         
-                        pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
-                        top_left = tuple(pts[0][0])  # First corner
-                        # top_right = tuple(pts[1][0])  # Second corner
-                        # bottom_right = tuple(pts[2][0])  # Third corner
-                        # bottom_left = tuple(pts[3][0])  # Fourth corner
-                        print(f'top left: {top_left}')
-                        if top_left[0] > frame.shape[1]/2:    # right side, move left
-                            self.ep_chassis.drive_speed(x=0.0, y=-0.1, z=0.0, timeout=5)
-                        else:               # left side, move right
-                            self.ep_chassis.drive_speed(x=0.0, y=0.1, z=0.0, timeout=5)
+        #                 pts = detection.corners.reshape((-1, 1, 2)).astype(np.int32)
+        #                 top_left = tuple(pts[0][0])  # First corner
+        #                 top_right = tuple(pts[1][0])  # Second corner
+        #                 bottom_right = tuple(pts[2][0])  # Third corner
+        #                 bottom_left = tuple(pts[3][0])  # Fourth corner
+        #                 print(f'top left: {top_left}')
+        #                 if top_left[0] > frame.shape[1]/2:    # right side, move left
+        #                     self.ep_chassis.drive_speed(x=0.0, y=-0.1, z=0.0, timeout=5)
+        #                 else:               # left side, move right
+        #                     self.ep_chassis.drive_speed(x=0.0, y=0.1, z=0.0, timeout=5)
                         
-                        return frame
+        #                 # pos = self.apriltag_map[detection.tag_id]
+                        
+        #                 # if (pos[0] - self.world_position[0])*(self.curr_destination[1] - self.world_position[1]) - (pos[1] -  self.world_position[1])*(self.curr_destination[0] -  self.world_position[0]) > 0:
+        #                 #     self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+        #                 # else:
+        #                 #     self.ep_chassis.drive_speed(x=0.0, y=-ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                                                
+        #                 return frame
             
-            # for tag, pos in self.apriltag_map.items():
-            #     if (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2 < APRILTAG_CLOSE_TRESH_MAPPED:
-            #         #print('APRILTAG CLOSE, NOT IN CAMERA FRAME')
-            #         self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
-            #         return frame
+        #     # for tag, pos in self.apriltag_map.items():
+        #     #     euc_dist_to_apriltag = (pos[0]-self.world_position[0])**2 + (pos[1]-self.world_position[1])**2
+        #     #     if euc_dist_to_apriltag < APRILTAG_CLOSE_TRESH_MAPPED:
+        #     #         print(f'APRILTAG CLOSE ({tag},{euc_dist_to_apriltag}), FROM MAP')
+        #     #         #self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                    
+        #     #         if (pos[0] - self.world_position[0])*(self.curr_destination[1] - self.world_position[1]) - (pos[1] -  self.world_position[1])*(self.curr_destination[0] -  self.world_position[0]) > 0:
+        #     #             self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+        #     #         else:
+        #     #             self.ep_chassis.drive_speed(x=0.0, y=-ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                    
+        #     #         return frame
             
-            # print("Obstacle avoided")
-            # at this point, all detections were greater than thresh, or there were 0 detections
-            self.curr_state = self.prev_state
-            self.avoid_time_buffer = 0
-            return frame
+        #     # print("Obstacle avoided")
+        #     # at this point, all detections were greater than thresh, or there were 0 detections
+        #     self.curr_state = self.prev_state
+        #     self.avoid_time_buffer = 0
+        #     return frame
                 
-        elif object == "ROBOT":
+        #elif object == "ROBOT":
+        if object == "ROBOT":
             self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
             for i, d in enumerate(yolo_detections):
                 cls, corners, depth, detected_block_lines_hough = d
-                if cls == 0: # robot detected
+                if cls == YOLO_MODEL_ROBOT: # robot detected
                     print(f'avoid robot depth: {depth}')
                     intheway = (depth < ROBOT_CLOSE_THRESH)
                     if intheway:
@@ -578,8 +611,16 @@ class Robot():
             return frame
         elif object == "IR_SENSOR":
             if self.curr_ir_dist < IR_SAFE_THRESH:
-                # drive left slowly
-                self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                # # drive left slowly
+                # self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                
+                pos = (self.world_position[0] + math.cos(np.deg2rad(self.world_heading)), self.world_position[1] + math.sin(np.deg2rad(self.world_heading)))
+                
+                if (pos[0] - self.world_position[0])*(self.curr_destination[1] - self.world_position[1]) - (pos[1] -  self.world_position[1])*(self.curr_destination[0] -  self.world_position[0]) > 0:
+                    self.ep_chassis.drive_speed(x=0.0, y=ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                else:
+                    self.ep_chassis.drive_speed(x=0.0, y=-ROBOT_Y_VELOCITY_MIN, z=0.0, timeout=5)
+                
                 return frame
             else:
                 # print("Obstacle avoided")
@@ -666,6 +707,7 @@ if __name__ == "__main__":
         for detection in apriltag_detections:
             t_ca, R_ca = get_pose_apriltag_in_camera_frame(detection)
             distance = np.linalg.norm(t_ca-np.array([0, 0, APRILTAG_SIZE]))
+            apriltag_yaw = np.rad2deg(np.arctan2(R_ca[1, 0], R_ca[0, 0]))
             # print(f'Apriltag dist: {distance}')
             
             T_ca = np.array([[R_ca[0,0], R_ca[0,1], R_ca[0,2], t_ca[0]], 
@@ -692,13 +734,17 @@ if __name__ == "__main__":
 
             final_score = closeness_score+rotation_score
 
-            if (closest_twa is None or (final_score < minscore and distance < 1.0)):
+            if closest_twa is None or (final_score < minscore and distance < 1.0 and abs(apriltag_yaw) < 30):
                 closest_twa = (t_wa_x, t_wa_y)
                 closest_tag = detection.tag_id
                 minscore = final_score
         
         if closest_twa is not None:
-            _robot.apriltag_map[closest_tag] = (closest_twa[0], closest_twa[1])
+            if closest_tag in _robot.apriltag_map:
+                prev_at_pos = _robot.apriltag_map[closest_tag]
+                _robot.apriltag_map[closest_tag] = ((prev_at_pos[0] + closest_twa[0]) / 2.0, (prev_at_pos[1] + closest_twa[1]) / 2.0)
+            else:
+                _robot.apriltag_map[closest_tag] = (closest_twa[0], closest_twa[1])
             print(f'Updated map: {_robot.apriltag_map}')
 
         #plt.clf()
@@ -819,6 +865,8 @@ if __name__ == "__main__":
                 _robot.update_wait()
             elif _robot.curr_state == "DONE_WAIT":
                 _robot.done_wait()
+            elif _robot.curr_state == "PUSH_BLOCKS":
+                _robot.push_blocks()
             elif _robot.curr_state == "DONE":
                 state_done_flag = True
         else:

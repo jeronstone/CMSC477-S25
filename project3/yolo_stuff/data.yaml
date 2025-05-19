@@ -2,4 +2,4 @@ path: ./ # After first run, YOLO expects all datasets to be in path+"/datsets"
 train: C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\project3\yolo_stuff\datasets\train
 val: C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\project3\yolo_stuff\datasets\validation
 nc: 7  # Number of classes (1 for only "object")
-names: ["robot", "cone", "lego_big", "lego_med", "lego_small", "center_line", "closet"]
+names: ["robot", "cone", "lego_big", "lego_medium", "lego_small", "center_line", "closet"]

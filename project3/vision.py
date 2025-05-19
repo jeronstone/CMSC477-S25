@@ -5,12 +5,14 @@ from ultralytics import YOLO
 BLOCK_WIDTH = 0.064
 ROBOT_WIDTH = 0.3
 
-CLASSES = ["robot", "cone", "lego_big", "lego_medium", "lego_small", "center_line", "closet"]
+#CLASSES = ["robot", "cone", "lego_big", "lego_medium", "lego_small", "center_line", "closet"]
+#CLASSES = ["lego_small", "lego_medium", "lego_large", "robot"]
 
 class Vision():
     
-    def __init__(self, model_pth):
+    def __init__(self, model_pth, classes_txt):
         self.model = YOLO(model_pth)
+        self.classes = classes_txt
     
     '''
     @param frame: camera frame to analyze
@@ -49,7 +51,7 @@ class Vision():
                 cv2.putText(frame, str((round(corners[0], 2), round(corners[1], 2))), (int(xyxy[0]), int(xyxy[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255))
             
                 cls = int(box.cls)
-                cls_str = CLASSES[cls]
+                cls_str = self.classes[cls]
                 cv2.putText(img=frame,
                             text=cls_str,
                             org=(int(xyxy[0]), int(xyxy[1])),
@@ -90,3 +92,10 @@ class Vision():
         # print(detected_block_lines_hough)
         
         return detected_block_lines_hough
+    
+    def switch_model(self, path, classes_txt):
+        self.model = YOLO(path)
+        self.classes = classes_txt
+        
+    def get_class_from_idx(self, idx):
+        return self.classes[idx]

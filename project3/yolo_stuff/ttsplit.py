@@ -45,8 +45,8 @@ def split_images(source_folder, folder_80, folder_20):
     print(f"Moved {len(images_20)} images to {folder_20}")
 
 # Example usage
-source_folder = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\project3\yolo_stuff\Images"
-folder_80 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\project3\yolo_stuff\datasets\train"
-folder_20 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\project3\yolo_stuff\datasets\validation"
+source_folder = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_f\\"
+folder_80 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_p3f\train\\"
+folder_20 = r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\train_images_p3f\validation\\"
 
 split_images(source_folder, folder_80, folder_20)

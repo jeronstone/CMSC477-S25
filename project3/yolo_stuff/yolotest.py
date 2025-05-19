@@ -6,7 +6,7 @@ from robomaster import camera
 from queue import Empty
 
 print('model')
-model = YOLO(r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\runs\detect\train2\weights\best.pt")
+model = YOLO(r"C:\Users\jesto\Desktop\CMSC477\CMSC477-S25\runs\detect\train5\weights\best.pt")
 
 ep_robot = robot.Robot()
 ep_robot.initialize(conn_type="sta", sn="3JKCH7T001008H")
